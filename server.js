@@ -126,5 +126,5 @@ app.post('/api/send-notification', async (req, res) => {
 const PORT = process.env.PORT || 1000;
 app.listen(PORT, () => {
   console.log(`🚀 LeosTrend T-Shirts backend running on port ${PORT}`);
-  console.log(`📱 WhatsApp notifications are ${WHATSAPP_CONFIG.accessToken ? 'configured' : 'NOT configured - set environment variables'}`);
+//  console.log(`📱 WhatsApp notifications are ${WHATSAPP_CONFIG.accessToken ? 'configured' : 'NOT configured - set environment variables'}`);
 });
