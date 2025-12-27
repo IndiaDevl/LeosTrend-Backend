@@ -1,4 +1,3 @@
-
 const nodemailer = require('nodemailer');
 const express = require('express');
 const axios = require('axios');
@@ -22,40 +21,6 @@ const tshirts = [
   { id: 3, name: "Ganesh LeosTrend T-Shirt", price: 27.99, image: "ganesh-yantra.jpg", sizes: ["S", "M", "L"] }
 ];
 
-// WhatsApp Configuration (You'll need to get these from WhatsApp Business API)
-const WHATSAPP_CONFIG = {
-  apiUrl: 'https://graph.facebook.com/v17.0',
-  phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID, // From WhatsApp Business API
-  accessToken: process.env.WHATSAPP_ACCESS_TOKEN, // From WhatsApp Business API
-  adminPhone: process.env.ADMIN_PHONE // Your WhatsApp number for notifications
-};
-
-// Function to send WhatsApp message
-async function sendWhatsAppMessage(to, message) {
-  try {
-    const response = await axios.post(
-      `${WHATSAPP_CONFIG.apiUrl}/${WHATSAPP_CONFIG.phoneNumberId}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: to,
-        type: "text",
-        text: { body: message }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${WHATSAPP_CONFIG.accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    console.log('WhatsApp message sent:', response.data);
-    return true;
-  } catch (error) {
-    console.error('Error sending WhatsApp message:', error.response?.data || error.message);
-    return false;
-  }
-}
-
 // API Routes
 app.get('/api/leostrend-tshirts', (req, res) => {
   res.json({ 
@@ -68,7 +33,7 @@ app.get('/api/products', (req, res) => {
   res.json(tshirts);
 });
 
-// Order Placement with WhatsApp Notification
+// Order Placement (WhatsApp notification removed)
 app.post('/api/orders', async (req, res) => {
   try {
     const { customer, items, total, shippingAddress, phone } = req.body;
@@ -92,45 +57,10 @@ app.post('/api/orders', async (req, res) => {
     // Save order (in memory - replace with database in production)
     orders.push(order);
 
-    // Create WhatsApp message
-    const itemsList = items.map(item => 
-      `• ${item.name} (Size: ${item.size}) x${item.quantity}: $${item.price * item.quantity}`
-    ).join('\n');
-
-    const whatsappMessage = `🛍️ *NEW ORDER RECEIVED!*
-
-📦 *Order #${order.id}*
-📅 ${new Date(order.date).toLocaleDateString()}
-
-👤 *Customer Details:*
-Name: ${customer}
-Phone: ${phone}
-Address: ${shippingAddress}
-
-🛒 *Order Items:*
-${itemsList}
-
-💰 *Total Amount:* $${total}
-
-📊 *Order Status:* ${order.status}
-
-Thank you for your order! We'll process it shortly.`;
-
-    // Send WhatsApp to admin
-    const adminMessageSent = await sendWhatsAppMessage(WHATSAPP_CONFIG.adminPhone, whatsappMessage);
-    
-    // Send confirmation to customer
-    const customerConfirmation = `Thank you for your order at LeosTrend T-Shirts! Your order #${order.id} for $${total} has been received. We'll notify you when it ships.`;
-    const customerMessageSent = await sendWhatsAppMessage(phone, customerConfirmation);
-
     res.status(201).json({ 
       success: true, 
       orderId: order.id,
-      message: 'Order placed successfully',
-      notifications: {
-        admin: adminMessageSent ? 'sent' : 'failed',
-        customer: customerMessageSent ? 'sent' : 'failed'
-      }
+      message: 'Order placed successfully'
     });
 
   } catch (error) {
@@ -195,6 +125,6 @@ app.post('/api/send-notification', async (req, res) => {
 
 const PORT = process.env.PORT || 1000;
 app.listen(PORT, () => {
-  console.log(`🚀 Yantra T-Shirts backend running on port ${PORT}`);
+  console.log(`🚀 LeosTrend T-Shirts backend running on port ${PORT}`);
   console.log(`📱 WhatsApp notifications are ${WHATSAPP_CONFIG.accessToken ? 'configured' : 'NOT configured - set environment variables'}`);
 });
