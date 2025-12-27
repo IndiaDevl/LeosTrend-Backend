@@ -1,4 +1,4 @@
-// --- Email Notification Setup (Nodemailer) ---
+
 const nodemailer = require('nodemailer');
 const express = require('express');
 const axios = require('axios');
