@@ -5,14 +5,14 @@ const axios = require('axios');
 const cors = require('cors');
 const app = express();
 
-// Middleware
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-app.options('/*', cors());
+// JSON body
 app.use(express.json({ limit: '50mb' }));
+
+// CORS (works perfectly on Render + Node 22)
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
 // In-memory storage (replace with real database like MongoDB for production)
 let orders = [];
