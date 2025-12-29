@@ -1,3 +1,4 @@
+require('dotenv').config();
 const nodemailer = require('nodemailer');
 const express = require('express');
 const axios = require('axios');
@@ -73,11 +74,19 @@ app.get('/api/orders', (req, res) => {
   res.json(orders);
 });
 
+// const transporter = nodemailer.createTransport({
+//   service: 'gmail',
+//   auth: {
+//     user: 'chinnasukumar056@gmail.com',
+//     pass: 'fjzb fxne zvoe xnae'
+//   }
+// });
+
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: 'SendGrid',
   auth: {
-    user: 'chinnasukumar056@gmail.com',
-    pass: 'fjzb fxne zvoe xnae'
+    user: 'apikey',
+    pass: process.env.SENDGRID_API_KEY
   }
 });
 
@@ -91,7 +100,7 @@ app.post('/api/send-notification', async (req, res) => {
     ).join('');
 
     const mailOptions = {
-      from: 'chinnasukumar056@gmail.com',
+      from: 'lt@leostrend.com',
       to: 'n.sukumar056@gmail.com',
       subject: `🛒 New T-Shirt Order from ${customer}`,
       html: `
