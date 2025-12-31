@@ -75,65 +75,6 @@ app.get('/api/orders', (req, res) => {
   res.json(orders);
 });
 
-// const transporter = nodemailer.createTransport({
-//   service: 'gmail',
-//   auth: {
-//     user: 'chinnasukumar056@gmail.com',
-//     pass: 'fjzb fxne zvoe xnae'
-//   }
-// });
-
-// const transporter = nodemailer.createTransport({
-//   service: 'SendGrid',
-//   auth: {
-//     user: 'apikey',
-//     pass: process.env.SENDGRID_API_KEY
-//   }
-// });
-
-// // Email notification endpoint
-// app.post('/api/send-notification', async (req, res) => {
-//   try {
-//     const { customer, items, phone, email, shippingAddress } = req.body;
-//     // Compose T-shirt details for email
-//     const itemsList = (items || []).map(item =>
-//       `<li>${item.name} (Size: ${item.size}) x${item.quantity} - $${item.price}</li>`
-//     ).join('');
-
-//     const mailOptions = {
-//       from: 'lt@leostrend.com',
-//       to: 'n.sukumar056@gmail.com',
-//       subject: `🛒 New T-Shirt Order from ${customer}`,
-//       html: `
-//         <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
-//           <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-//             <h2 style="color: #4CAF50; margin-bottom: 20px;">🛒 New T-Shirt Order</h2>
-//             <p><strong>Customer Name:</strong> ${customer}</p>
-//             <p><strong>Phone Number:</strong> ${phone}</p>
-//             <p><strong>Email Address:</strong> ${email || 'N/A'}</p>
-//             <p><strong>Shipping Address:</strong> ${shippingAddress || 'N/A'}</p>
-//             <h3>Ordered T-Shirts:</h3>
-//             <ul>${itemsList}</ul>
-//             <div style="margin-top: 30px; padding: 15px; background: #e8f5e9; border-left: 4px solid #4CAF50; border-radius: 5px;">
-//               <p style="margin: 0; color: #2e7d32;">
-//                 <strong>Status:</strong> Order received from LeosTrend website.
-//               </p>
-//             </div>
-//           </div>
-//         </div>
-//       `
-//     };
-
-//     await transporter.sendMail(mailOptions);
-//     console.log('✅ Email notification sent successfully');
-//     res.json({ success: true, message: 'Email sent successfully' });
-//   } catch (error) {
-//     console.error('❌ Email send error:', error);
-//     res.status(500).json({ success: false, error: error.message });
-//   }
-// });
-
-
 
 // ✅ Set SendGrid API Key
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -153,15 +94,14 @@ app.post('/api/send-notification', async (req, res) => {
         ).join('')
       : '<li>No items</li>';
 
-    const msg = {
-      to: 'n.sukumar056@gmail.com', // Admin mail
+
+    // Prepare email content
+    const mailContent = {
       from: {
-        email: 'lt@leostrend.com',   // ✅ VERIFIED sender in SendGrid
+        email: 'lt@leostrend.com',
         name: 'LeosTrend'
       },
       subject: `🛒 New T-Shirt Order from ${customer}`,
-
-      // ✅ Plain text (important – never blank)
       text: `
 New Order Received
 
@@ -173,27 +113,37 @@ Address: ${shippingAddress || 'N/A'}
 Items:
 ${itemText}
       `,
-
-      // ✅ HTML mail
       html: `
         <h2>🛒 New T-Shirt Order</h2>
-
         <p><b>Customer:</b> ${customer}</p>
         <p><b>Phone:</b> ${phone}</p>
         <p><b>Email:</b> ${email || 'N/A'}</p>
         <p><b>Address:</b> ${shippingAddress || 'N/A'}</p>
-
         <h3>Ordered Items</h3>
         <ul>${itemHtml}</ul>
-
         <p style="color: green;"><b>Status:</b> Order received from LeosTrend website</p>
       `
     };
 
-    await sgMail.send(msg);
+    // Send to admin
+    const adminMsg = {
+      ...mailContent,
+      to: 'n.sukumar056@gmail.com'
+    };
+    // Send to customer if email provided
+    const customerMsg = email ? {
+      ...mailContent,
+      to: email,
+      subject: `🛒 Your LeosTrend Order Confirmation`
+    } : null;
 
-    console.log('✅ Email sent successfully');
-    res.json({ success: true, message: 'Email sent successfully' });
+    // Send both emails in parallel
+    const sendPromises = [sgMail.send(adminMsg)];
+    if (customerMsg) sendPromises.push(sgMail.send(customerMsg));
+    await Promise.all(sendPromises);
+
+    console.log('✅ Emails sent to admin and customer');
+    res.json({ success: true, message: 'Emails sent to admin and customer (if provided)' });
 
   } catch (error) {
     console.error('❌ Email send error:', error.response?.body || error.message);
