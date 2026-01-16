@@ -4,6 +4,7 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const sgMail = require('@sendgrid/mail');
+const Razorpay = require('razorpay');
 const app = express();
 
 // JSON body
@@ -154,8 +155,28 @@ ${itemText}
   }
 });
 
+// Initialize Razorpay
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+app.post('/api/create-order', async (req, res) => {
+  const { amount, currency = "INR" } = req.body;
+  try {
+    const options = {
+      amount: amount * 100, // amount in paise
+      currency,
+      receipt: `order_rcptid_${Date.now()}`
+    };
+    const order = await razorpay.orders.create(options);
+    res.json({ orderId: order.id, key: process.env.RAZORPAY_KEY_ID, amount: order.amount, currency: order.currency });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create Razorpay order', details: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 1000;
 app.listen(PORT, () => {
   console.log(`🚀 LeosTrend T-Shirts backend running on port ${PORT}`);
-//  console.log(`📱 WhatsApp notifications are ${WHATSAPP_CONFIG.accessToken ? 'configured' : 'NOT configured - set environment variables'}`);
 });
