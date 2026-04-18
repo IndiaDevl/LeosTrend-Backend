@@ -31,7 +31,6 @@ app.use(cors({
 }));
 
 
-const path = require("path");
 const distDir = path.join(__dirname, 'dist');
 const distIndexFile = path.join(distDir, 'index.html');
 const hasFrontendBuild = fs.existsSync(distIndexFile);
