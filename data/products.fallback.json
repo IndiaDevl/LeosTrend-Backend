@@ -1,0 +1,674 @@
+[
+  {
+    "_id": "579962aa-240f-4c4b-9433-25f20b4c4f50",
+    "name": "zip-sweatshirt ",
+    "price": 2,
+    "mrp": 200,
+    "category": "zip",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable and light weight",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Relaxed",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775230753077-818479760.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775230753077-809078152.jpeg"
+    ],
+    "image": "/uploads/products/1775230753077-818479760.jpeg",
+    "createdAt": "2026-04-03T15:39:13.495Z",
+    "updatedAt": "2026-04-03T15:39:13.495Z",
+    "images": [
+      "/uploads/products/1775230753077-818479760.jpeg",
+      "/uploads/products/1775230753077-809078152.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775230753077-809078152.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775230753077-809078152.jpeg"
+    ]
+  },
+  {
+    "_id": "f06accba-86d8-4eaf-a662-134843ce347d",
+    "name": "zip-sweatshirt ",
+    "price": 2,
+    "mrp": 200,
+    "category": "zip",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable and light weight",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775230710133-405218295.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775230710182-415119190.jpeg"
+    ],
+    "image": "/uploads/products/1775230710133-405218295.jpeg",
+    "createdAt": "2026-04-03T15:38:30.251Z",
+    "updatedAt": "2026-04-03T15:38:30.251Z",
+    "images": [
+      "/uploads/products/1775230710133-405218295.jpeg",
+      "/uploads/products/1775230710182-415119190.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775230710182-415119190.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775230710182-415119190.jpeg"
+    ]
+  },
+  {
+    "_id": "34f524de-b459-471c-9f68-b10fb5362829",
+    "name": "zip-sweatshirt ",
+    "price": 2,
+    "mrp": 200,
+    "category": "zip",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable and light weight",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775230677047-174710327.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775230677170-145007595.jpeg"
+    ],
+    "image": "/uploads/products/1775230677047-174710327.jpeg",
+    "createdAt": "2026-04-03T15:37:57.328Z",
+    "updatedAt": "2026-04-03T15:37:57.328Z",
+    "images": [
+      "/uploads/products/1775230677047-174710327.jpeg",
+      "/uploads/products/1775230677170-145007595.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775230677170-145007595.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775230677170-145007595.jpeg"
+    ]
+  },
+  {
+    "_id": "05c19c8b-d03a-4265-9379-dafd8af20c0b",
+    "name": "zip-sweatshirt ",
+    "price": 2,
+    "mrp": 200,
+    "category": "zip",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable and light weight",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775230644373-534773020.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775230644382-837256058.jpeg"
+    ],
+    "image": "/uploads/products/1775230644373-534773020.jpeg",
+    "createdAt": "2026-04-03T15:37:24.405Z",
+    "updatedAt": "2026-04-03T15:37:24.405Z",
+    "images": [
+      "/uploads/products/1775230644373-534773020.jpeg",
+      "/uploads/products/1775230644382-837256058.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775230644382-837256058.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775230644382-837256058.jpeg"
+    ]
+  },
+  {
+    "_id": "0d66421d-f4c2-42b4-8bea-fd99ffef2a26",
+    "name": "zip-sweatshirt ",
+    "price": 2,
+    "mrp": 200,
+    "category": "zip",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable and light weight",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775230596222-192297272.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775230596287-511958791.jpeg"
+    ],
+    "image": "/uploads/products/1775230596222-192297272.jpeg",
+    "createdAt": "2026-04-03T15:36:36.358Z",
+    "updatedAt": "2026-04-03T15:36:36.358Z",
+    "images": [
+      "/uploads/products/1775230596222-192297272.jpeg",
+      "/uploads/products/1775230596287-511958791.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775230596287-511958791.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775230596287-511958791.jpeg"
+    ]
+  },
+  {
+    "_id": "c82ef855-2d70-49e4-87a4-f7b822d44fd1",
+    "name": "hood",
+    "price": 2,
+    "mrp": 1200,
+    "category": "hoodies",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very light weight fabric ",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775229354845-410083731.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775229354846-163726533.jpeg"
+    ],
+    "image": "/uploads/products/1775229354845-410083731.jpeg",
+    "createdAt": "2026-04-03T15:15:54.866Z",
+    "updatedAt": "2026-04-03T15:15:54.866Z",
+    "images": [
+      "/uploads/products/1775229354845-410083731.jpeg",
+      "/uploads/products/1775229354846-163726533.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775229354846-163726533.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775229354846-163726533.jpeg"
+    ]
+  },
+  {
+    "_id": "d94a3426-5a37-4404-b424-99c1033a3140",
+    "name": "hood",
+    "price": 2,
+    "mrp": 1200,
+    "category": "hoodies",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton and feel very light weight fabric",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775229290798-216968788.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775229290800-959206924.jpeg"
+    ],
+    "image": "/uploads/products/1775229290798-216968788.jpeg",
+    "createdAt": "2026-04-03T15:14:50.807Z",
+    "updatedAt": "2026-04-03T15:14:50.807Z",
+    "images": [
+      "/uploads/products/1775229290798-216968788.jpeg",
+      "/uploads/products/1775229290800-959206924.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775229290800-959206924.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775229290800-959206924.jpeg"
+    ]
+  },
+  {
+    "_id": "520d1310-1dd9-4bf6-b734-55a30d887632",
+    "name": "hood",
+    "price": 2,
+    "mrp": 1200,
+    "category": "hoodies",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very light feel fabric ",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775229177214-195227030.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775229177216-115892479.jpeg"
+    ],
+    "image": "/uploads/products/1775229177214-195227030.jpeg",
+    "createdAt": "2026-04-03T15:12:57.229Z",
+    "updatedAt": "2026-04-03T15:12:57.229Z",
+    "images": [
+      "/uploads/products/1775229177214-195227030.jpeg",
+      "/uploads/products/1775229177216-115892479.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775229177216-115892479.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775229177216-115892479.jpeg"
+    ]
+  },
+  {
+    "_id": "e853e19a-fed8-4672-9a10-d254fdad951e",
+    "name": "cosmic swt-shirt sharp ",
+    "price": 2,
+    "mrp": 1200,
+    "category": "hoodies",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable fabric ",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775220833505-536442625.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775220833526-745805468.jpeg"
+    ],
+    "image": "/uploads/products/1775220833505-536442625.jpeg",
+    "createdAt": "2026-04-03T12:53:53.542Z",
+    "updatedAt": "2026-04-03T12:53:53.542Z",
+    "images": [
+      "/uploads/products/1775220833505-536442625.jpeg",
+      "/uploads/products/1775220833526-745805468.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775220833526-745805468.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775220833526-745805468.jpeg"
+    ]
+  },
+  {
+    "_id": "04e9c508-269f-4e93-9c2f-44cd9e9ef0ad",
+    "name": "cosmic swt-shirt sharp ",
+    "price": 2,
+    "mrp": 1200,
+    "category": "sweatshirts",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton feel very comfortable ",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775220176929-927577272.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775220176931-507630792.jpeg"
+    ],
+    "image": "/uploads/products/1775220176929-927577272.jpeg",
+    "createdAt": "2026-04-03T12:42:56.942Z",
+    "updatedAt": "2026-04-03T12:42:56.942Z",
+    "images": [
+      "/uploads/products/1775220176929-927577272.jpeg",
+      "/uploads/products/1775220176931-507630792.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775220176931-507630792.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775220176931-507630792.jpeg"
+    ]
+  },
+  {
+    "_id": "7329d401-6cb1-47cf-87e0-a39d861763cb",
+    "name": "cosmic swt-shirt sharp ",
+    "price": 2,
+    "mrp": 1200,
+    "category": "sweatshirts",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable ",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775220076338-950847030.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775220076344-156016808.jpeg"
+    ],
+    "image": "/uploads/products/1775220076338-950847030.jpeg",
+    "createdAt": "2026-04-03T12:34:16.247Z",
+    "updatedAt": "2026-04-03T12:41:16.383Z",
+    "images": [
+      "/uploads/products/1775220076338-950847030.jpeg",
+      "/uploads/products/1775220076344-156016808.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775220076344-156016808.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775220076344-156016808.jpeg"
+    ]
+  },
+  {
+    "_id": "b4ecfd8a-9bcd-47ba-8032-39f3c4f4d500",
+    "name": "cosmic swt-shirt sharp ",
+    "price": 2,
+    "mrp": 1200,
+    "category": "sweatshirts",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton and very comfortable and feel",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775220105637-900439882.jpeg",
+    "galleryImages": [
+      "http://localhost:1000/uploads/products/1775219594493-940113758.jpeg",
+      "/uploads/products/1775220105643-299913115.jpeg"
+    ],
+    "image": "/uploads/products/1775220105637-900439882.jpeg",
+    "createdAt": "2026-04-03T12:33:14.500Z",
+    "updatedAt": "2026-04-03T12:41:45.665Z",
+    "images": [
+      "/uploads/products/1775220105637-900439882.jpeg",
+      "http://localhost:1000/uploads/products/1775219594493-940113758.jpeg",
+      "/uploads/products/1775220105643-299913115.jpeg"
+    ],
+    "additionalImages": [
+      "http://localhost:1000/uploads/products/1775219594493-940113758.jpeg",
+      "/uploads/products/1775220105643-299913115.jpeg"
+    ],
+    "gallery": [
+      "http://localhost:1000/uploads/products/1775219594493-940113758.jpeg",
+      "/uploads/products/1775220105643-299913115.jpeg"
+    ]
+  },
+  {
+    "_id": "b02cc45f-10b8-44e5-ab8d-d9becd0d17d8",
+    "name": "cosmic swt-shirt sharp ",
+    "price": 2,
+    "mrp": 1200,
+    "category": "sweatshirts",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton fell comfortable and ",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Regular",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775220128073-98695958.jpeg",
+    "galleryImages": [
+      "http://localhost:1000/uploads/products/1775219493341-221483452.jpeg",
+      "/uploads/products/1775220128075-828557552.jpeg"
+    ],
+    "image": "/uploads/products/1775220128073-98695958.jpeg",
+    "createdAt": "2026-04-03T12:31:33.370Z",
+    "updatedAt": "2026-04-03T12:42:08.084Z",
+    "images": [
+      "/uploads/products/1775220128073-98695958.jpeg",
+      "http://localhost:1000/uploads/products/1775219493341-221483452.jpeg",
+      "/uploads/products/1775220128075-828557552.jpeg"
+    ],
+    "additionalImages": [
+      "http://localhost:1000/uploads/products/1775219493341-221483452.jpeg",
+      "/uploads/products/1775220128075-828557552.jpeg"
+    ],
+    "gallery": [
+      "http://localhost:1000/uploads/products/1775219493341-221483452.jpeg",
+      "/uploads/products/1775220128075-828557552.jpeg"
+    ]
+  },
+  {
+    "_id": "da09bf2a-1b8b-4b1d-ba5b-7e029b0f3419",
+    "name": "cosmic oversized sharp ",
+    "price": 2,
+    "mrp": 1200,
+    "category": "oversized",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "jjnkljbljblbl",
+    "stock": 30,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "imageUrl": "/uploads/products/1775105486143-282821441.jpeg",
+    "galleryImages": [
+      "/uploads/products/1775105486149-861440956.jpeg"
+    ],
+    "image": "/uploads/products/1775105486143-282821441.jpeg",
+    "createdAt": "2026-04-02T04:51:26.167Z",
+    "updatedAt": "2026-04-02T04:51:26.167Z",
+    "images": [
+      "/uploads/products/1775105486143-282821441.jpeg",
+      "/uploads/products/1775105486149-861440956.jpeg"
+    ],
+    "additionalImages": [
+      "/uploads/products/1775105486149-861440956.jpeg"
+    ],
+    "gallery": [
+      "/uploads/products/1775105486149-861440956.jpeg"
+    ]
+  },
+  {
+    "_id": "183dc8f1-4893-4c4e-865f-67cc52448399",
+    "name": "cosmic oversized sharp ",
+    "price": 1,
+    "mrp": 1500,
+    "category": "oversized",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton ....",
+    "stock": 20,
+    "brand": "LeosTrend",
+    "rating": "New",
+    "material": "100%cotton",
+    "fit": "Oversized",
+    "careInstructions": "machine wash cold,do not bleach",
+    "sku": "",
+    "image": "/uploads/1774170642853-232510215.jpeg",
+    "createdAt": "2026-03-22T09:10:42.867Z",
+    "updatedAt": "2026-03-22T09:10:42.867Z"
+  },
+  {
+    "_id": "ff3761b3-660a-445e-81e4-cc41a9a53407",
+    "name": "cosmic oversized sharp ",
+    "price": 999,
+    "mrp": 1500,
+    "category": "oversized",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very comfortable and soft feel",
+    "stock": 20,
+    "brand": "LeosTrend",
+    "rating": "Bestseller",
+    "image": "/uploads/1774004925158-662304775.jpeg",
+    "createdAt": "2026-03-20T11:08:45.179Z",
+    "updatedAt": "2026-03-20T11:08:45.179Z"
+  },
+  {
+    "_id": "5b54ad31-09da-46c6-87ec-cc075ab13a4b",
+    "name": "cosmic oversized sharp ",
+    "price": 1,
+    "category": "oversized",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "colors": [
+      "Black",
+      "White"
+    ],
+    "description": "heavy cotton very soft fell comfortable",
+    "stock": 30,
+    "image": "/uploads/1773851169340-18404091.jpeg",
+    "brand": "LeosTrend",
+    "mrp": 899,
+    "rating": "New",
+    "createdAt": "2026-03-18T16:26:09.354Z",
+    "updatedAt": "2026-03-18T17:14:58.092Z"
+  }
+]
