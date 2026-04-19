@@ -1,10 +1,44 @@
+const fs = require("fs");
+const path = require("path");
 const { getDbPool } = require("../config/db");
-const { ensureProductStore } = require("./productController");
+const { ensureProductStore, findProductById } = require("./productController");
 
 const WISHLIST_TABLE = "wishlist";
 const PRODUCTS_TABLE = "products";
+const wishlistDataDir = path.join(__dirname, "..", "data");
+const wishlistDataFile = path.join(wishlistDataDir, "wishlist.fallback.json");
 
 let wishlistStoreReadyPromise = null;
+
+const hasDatabaseConnection = () => Boolean(getDbPool());
+
+const ensureWishlistFile = () => {
+  if (!fs.existsSync(wishlistDataDir)) {
+    fs.mkdirSync(wishlistDataDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(wishlistDataFile)) {
+    fs.writeFileSync(wishlistDataFile, "[]", "utf8");
+  }
+};
+
+const loadWishlistFromFile = () => {
+  ensureWishlistFile();
+
+  try {
+    const raw = fs.readFileSync(wishlistDataFile, "utf8");
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Failed to read wishlist fallback store:", error.message);
+    return [];
+  }
+};
+
+const saveWishlistToFile = (items) => {
+  ensureWishlistFile();
+  fs.writeFileSync(wishlistDataFile, JSON.stringify(items, null, 2), "utf8");
+};
 
 const asyncHandler = (handler) => async (req, res) => {
   try {
@@ -112,6 +146,12 @@ const ensureWishlistStore = async () => {
 
   wishlistStoreReadyPromise = (async () => {
     await ensureProductStore();
+
+    if (!hasDatabaseConnection()) {
+      ensureWishlistFile();
+      return;
+    }
+
     const pool = getPoolOrThrow();
 
     await pool.query(`
@@ -139,7 +179,6 @@ const ensureWishlistStore = async () => {
 
 exports.addWishlistItem = asyncHandler(async (req, res) => {
   await ensureWishlistStore();
-  const pool = getPoolOrThrow();
   const userId = String(req.customer?.id || req.body.user_id || req.body.userId || "").trim();
   const productId = String(req.body.product_id || req.body.productId || "").trim();
 
@@ -147,6 +186,38 @@ exports.addWishlistItem = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: "user_id and product_id are required" });
   }
 
+  if (!hasDatabaseConnection()) {
+    const product = await findProductById(productId);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const wishlistItems = loadWishlistFromFile();
+    const existing = wishlistItems.find(
+      (item) => String(item.userId) === userId && String(item.productId) === productId
+    );
+    const wishlistItem = existing || {
+      wishlistId: Date.now(),
+      userId,
+      productId,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (!existing) {
+      wishlistItems.push(wishlistItem);
+      saveWishlistToFile(wishlistItems);
+    }
+
+    return res.status(existing ? 200 : 201).json({
+      ...product,
+      wishlistId: wishlistItem.wishlistId,
+      userId,
+      productId,
+      wishlistCreatedAt: wishlistItem.createdAt,
+    });
+  }
+
+  const pool = getPoolOrThrow();
   const [productRows] = await pool.query(
     `SELECT id FROM ${PRODUCTS_TABLE} WHERE id = ? LIMIT 1`,
     [productId]
@@ -175,13 +246,36 @@ exports.addWishlistItem = asyncHandler(async (req, res) => {
 
 exports.getWishlistItems = asyncHandler(async (req, res) => {
   await ensureWishlistStore();
-  const pool = getPoolOrThrow();
   const userId = String(req.customer?.id || req.params.userId || "").trim();
 
   if (!userId) {
     return res.status(400).json({ message: "userId is required" });
   }
 
+  if (!hasDatabaseConnection()) {
+    const wishlistItems = loadWishlistFromFile()
+      .filter((item) => String(item.userId) === userId)
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const products = await Promise.all(
+      wishlistItems.map(async (item) => {
+        const product = await findProductById(item.productId);
+        return product
+          ? {
+              ...product,
+              wishlistId: item.wishlistId,
+              userId: item.userId,
+              productId: item.productId,
+              wishlistCreatedAt: item.createdAt,
+            }
+          : null;
+      })
+    );
+
+    return res.json(products.filter(Boolean));
+  }
+
+  const pool = getPoolOrThrow();
   const [rows] = await pool.query(
     `${getWishlistSelectSql()} WHERE w.user_id = ? ORDER BY w.created_at DESC`,
     [userId]
@@ -192,11 +286,29 @@ exports.getWishlistItems = asyncHandler(async (req, res) => {
 
 exports.deleteWishlistItem = asyncHandler(async (req, res) => {
   await ensureWishlistStore();
-  const pool = getPoolOrThrow();
   const wishlistId = String(req.params.id || "").trim();
   const userId = String(req.customer?.id || req.query.user_id || req.query.userId || "").trim();
   const productId = String(req.query.product_id || req.query.productId || "").trim();
 
+  if (!hasDatabaseConnection()) {
+    const wishlistItems = loadWishlistFromFile();
+    const nextItems = wishlistItems.filter((item) => {
+      if (userId && productId) {
+        return !(String(item.userId) === userId && String(item.productId) === productId);
+      }
+
+      return !(String(item.wishlistId) === wishlistId && String(item.userId) === userId);
+    });
+
+    if (nextItems.length === wishlistItems.length) {
+      return res.status(404).json({ message: "Wishlist item not found" });
+    }
+
+    saveWishlistToFile(nextItems);
+    return res.json({ message: "Wishlist item removed successfully" });
+  }
+
+  const pool = getPoolOrThrow();
   let result;
 
   if (userId && productId) {

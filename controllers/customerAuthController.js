@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -5,8 +7,40 @@ const { getDbPool } = require('../config/db');
 
 const CUSTOMERS_TABLE = 'customers';
 const SALT_ROUNDS = 10;
+const customersDataDir = path.join(__dirname, '..', 'data');
+const customersDataFile = path.join(customersDataDir, 'customers.fallback.json');
 
 let customerStoreReadyPromise = null;
+
+const hasDatabaseConnection = () => Boolean(getDbPool());
+
+const ensureCustomersFile = () => {
+  if (!fs.existsSync(customersDataDir)) {
+    fs.mkdirSync(customersDataDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(customersDataFile)) {
+    fs.writeFileSync(customersDataFile, '[]', 'utf8');
+  }
+};
+
+const loadCustomersFromFile = () => {
+  ensureCustomersFile();
+
+  try {
+    const raw = fs.readFileSync(customersDataFile, 'utf8');
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Failed to read customers fallback store:', error.message);
+    return [];
+  }
+};
+
+const saveCustomersToFile = (customers) => {
+  ensureCustomersFile();
+  fs.writeFileSync(customersDataFile, JSON.stringify(customers, null, 2), 'utf8');
+};
 
 const asyncHandler = (handler) => async (req, res, next) => {
   try {
@@ -67,6 +101,11 @@ const ensureCustomerStore = async () => {
   }
 
   customerStoreReadyPromise = (async () => {
+    if (!hasDatabaseConnection()) {
+      ensureCustomersFile();
+      return;
+    }
+
     const pool = getPoolOrThrow();
 
     await pool.query(`
@@ -93,6 +132,13 @@ const ensureCustomerStore = async () => {
 
 const getCustomerById = async (customerId) => {
   await ensureCustomerStore();
+
+  if (!hasDatabaseConnection()) {
+    const customers = loadCustomersFromFile();
+    const customer = customers.find((item) => String(item.id) === String(customerId));
+    return customer ? buildCustomerProfile(customer) : null;
+  }
+
   const pool = getPoolOrThrow();
   const [rows] = await pool.query(
     `SELECT id, name, email, phone, created_at, updated_at FROM ${CUSTOMERS_TABLE} WHERE id = ? LIMIT 1`,
@@ -153,7 +199,6 @@ const sendAuthResponse = (res, customerProfile, statusCode = 200) => {
 
 exports.registerCustomer = asyncHandler(async (req, res) => {
   await ensureCustomerStore();
-  const pool = getPoolOrThrow();
 
   const name = String(req.body.name || '').trim();
   const email = normalizeEmail(req.body.email);
@@ -172,6 +217,33 @@ exports.registerCustomer = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Password must be at least 6 characters long' });
   }
 
+  if (!hasDatabaseConnection()) {
+    const customers = loadCustomersFromFile();
+    const existing = customers.some((item) => normalizeEmail(item.email) === email);
+
+    if (existing) {
+      return res.status(409).json({ message: 'An account with this email already exists' });
+    }
+
+    const customerId = crypto.randomUUID();
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const timestamp = new Date().toISOString();
+    const customer = {
+      id: customerId,
+      name,
+      email,
+      phone: phone || '',
+      password_hash: passwordHash,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    customers.push(customer);
+    saveCustomersToFile(customers);
+    return sendAuthResponse(res, buildCustomerProfile(customer), 201);
+  }
+
+  const pool = getPoolOrThrow();
   const [existingRows] = await pool.query(
     `SELECT id FROM ${CUSTOMERS_TABLE} WHERE email = ? LIMIT 1`,
     [email]
@@ -195,7 +267,6 @@ exports.registerCustomer = asyncHandler(async (req, res) => {
 
 exports.loginCustomer = asyncHandler(async (req, res) => {
   await ensureCustomerStore();
-  const pool = getPoolOrThrow();
 
   const email = normalizeEmail(req.body.email);
   const password = String(req.body.password || '');
@@ -204,6 +275,23 @@ exports.loginCustomer = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Email and password are required' });
   }
 
+  if (!hasDatabaseConnection()) {
+    const customers = loadCustomersFromFile();
+    const customerRow = customers.find((item) => normalizeEmail(item.email) === email);
+
+    if (!customerRow) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    const passwordOk = await bcrypt.compare(password, customerRow.password_hash);
+    if (!passwordOk) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    return sendAuthResponse(res, buildCustomerProfile(customerRow));
+  }
+
+  const pool = getPoolOrThrow();
   const [rows] = await pool.query(
     `SELECT id, name, email, phone, password_hash, created_at, updated_at FROM ${CUSTOMERS_TABLE} WHERE email = ? LIMIT 1`,
     [email]

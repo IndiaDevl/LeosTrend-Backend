@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { connectDB, getDbPool, getMissingDbEnvVars } = require('./config/db');
-const { ensureProductStore } = require('./controllers/productController');
+const { ensureProductStore, reserveProductStockInFile } = require('./controllers/productController');
 const productRoutes = require('./routes/productRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const { ensureWishlistStore } = require('./controllers/wishlistController');
@@ -172,6 +172,8 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
 const uploadsDir = path.join(__dirname, 'uploads');
+const ordersDataDir = path.join(__dirname, 'data');
+const ordersDataFile = path.join(ordersDataDir, 'orders.fallback.json');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -272,6 +274,40 @@ const ORDERS_TABLE = 'orders';
 
 let ordersStoreReadyPromise = null;
 let ordersRevenueColumnPromise = null;
+
+const hasDatabaseConnection = () => Boolean(getDbPool());
+
+const ensureOrdersFile = () => {
+  if (!fs.existsSync(ordersDataDir)) {
+    fs.mkdirSync(ordersDataDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(ordersDataFile)) {
+    fs.writeFileSync(ordersDataFile, '[]', 'utf8');
+  }
+};
+
+const loadOrdersFromFile = () => {
+  ensureOrdersFile();
+
+  try {
+    const raw = fs.readFileSync(ordersDataFile, 'utf8');
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Failed to read orders fallback store:', error.message);
+    return [];
+  }
+};
+
+const saveOrdersToFile = (orders) => {
+  ensureOrdersFile();
+  fs.writeFileSync(ordersDataFile, JSON.stringify(orders, null, 2), 'utf8');
+};
+
+const sortOrdersDesc = (orders = []) => {
+  return [...orders].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+};
 
 const normalizeOrderId = (value) => String(value ?? '').trim();
 
@@ -459,6 +495,11 @@ const ensureOrdersStore = async () => {
   }
 
   ordersStoreReadyPromise = (async () => {
+    if (!hasDatabaseConnection()) {
+      ensureOrdersFile();
+      return;
+    }
+
     const pool = getOrdersPoolOrThrow();
 
     await pool.query(`
@@ -504,6 +545,12 @@ const ensureOrdersStore = async () => {
 
 const fetchOrderById = async (orderId) => {
   await ensureOrdersStore();
+
+  if (!hasDatabaseConnection()) {
+    const orders = loadOrdersFromFile();
+    return orders.find((order) => Number(order.id) === Number(orderId)) || null;
+  }
+
   const pool = getOrdersPoolOrThrow();
   const [rows] = await pool.query(`SELECT * FROM ${ORDERS_TABLE} WHERE id = ? LIMIT 1`, [Number(orderId)]);
   return rows[0] ? mapRowToOrder(rows[0]) : null;
@@ -511,6 +558,11 @@ const fetchOrderById = async (orderId) => {
 
 const fetchOrdersForAdmin = async () => {
   await ensureOrdersStore();
+
+  if (!hasDatabaseConnection()) {
+    return sortOrdersDesc(loadOrdersFromFile());
+  }
+
   const pool = getOrdersPoolOrThrow();
   const [rows] = await pool.query(`SELECT * FROM ${ORDERS_TABLE} ORDER BY id DESC`);
   return rows.map(mapRowToOrder);
@@ -518,13 +570,22 @@ const fetchOrdersForAdmin = async () => {
 
 const fetchOrdersForCustomer = async ({ phone, email }) => {
   await ensureOrdersStore();
-  const pool = getOrdersPoolOrThrow();
   const normalizedPhone = normalizePhone(phone);
   const normalizedEmail = String(email || '').trim().toLowerCase();
 
   if (!normalizedPhone && !normalizedEmail) {
     return [];
   }
+
+  if (!hasDatabaseConnection()) {
+    return sortOrdersDesc(loadOrdersFromFile()).filter((order) => {
+      const orderPhone = normalizePhone(order.phoneNormalized || order.phone);
+      const orderEmail = String(order.email || '').trim().toLowerCase();
+      return (normalizedPhone && orderPhone === normalizedPhone) || (normalizedEmail && orderEmail === normalizedEmail);
+    });
+  }
+
+  const pool = getOrdersPoolOrThrow();
 
   const whereClauses = [];
   const params = [];
@@ -549,6 +610,16 @@ const fetchOrdersForCustomer = async ({ phone, email }) => {
 
 const updateStoredOrder = async (order) => {
   await ensureOrdersStore();
+
+  if (!hasDatabaseConnection()) {
+    const orders = loadOrdersFromFile();
+    const nextOrders = orders.map((existingOrder) =>
+      Number(existingOrder.id) === Number(order.id) ? order : existingOrder
+    );
+    saveOrdersToFile(nextOrders);
+    return fetchOrderById(order.id);
+  }
+
   const pool = getOrdersPoolOrThrow();
   await pool.query(
     `
@@ -1641,6 +1712,12 @@ app.get('/api/health', async (_req, res) => {
     });
   }
 });
+
+if (hasFrontendBuild) {
+  app.get(/^\/(?!api(?:\/|$)|uploads(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(distIndexFile);
+  });
+}
 
 const PORT = process.env.PORT || 1000;
 const startServer = async () => {
