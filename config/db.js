@@ -5,6 +5,7 @@ const mysql = require('mysql2/promise');
 let pool = null;
 
 const DEFAULT_CA_PATH = path.resolve(__dirname, 'global-bundle.pem');
+const REQUIRED_DB_ENV_VARS = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
 
 const requireEnv = (name) => {
   const value = String(process.env[name] || '').trim();
@@ -14,6 +15,10 @@ const requireEnv = (name) => {
   }
 
   return value;
+};
+
+const getMissingDbEnvVars = () => {
+  return REQUIRED_DB_ENV_VARS.filter((name) => !String(process.env[name] || '').trim());
 };
 
 const getCaCertificate = () => {
@@ -62,6 +67,15 @@ const connectDB = async () => {
   }
 
   try {
+    const missingDbEnvVars = getMissingDbEnvVars();
+
+    if (missingDbEnvVars.length > 0) {
+      throw new Error(
+        `Missing required database environment variables: ${missingDbEnvVars.join(', ')}. ` +
+          'Set these in your Render service Environment settings.'
+      );
+    }
+
     const config = buildMysqlConfig();
     pool = mysql.createPool(config);
 
@@ -77,8 +91,7 @@ const connectDB = async () => {
       pool = null;
     }
 
-    console.error('Failed to connect to MySQL:', error.message);
-    process.exit(1);
+    throw error;
   }
 };
 
@@ -87,4 +100,5 @@ const getDbPool = () => pool;
 module.exports = {
   connectDB,
   getDbPool,
+  getMissingDbEnvVars,
 };

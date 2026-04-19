@@ -12,7 +12,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { connectDB, getDbPool } = require('./config/db');
+const { connectDB, getDbPool, getMissingDbEnvVars } = require('./config/db');
 const { ensureProductStore } = require('./controllers/productController');
 const productRoutes = require('./routes/productRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
@@ -268,44 +268,12 @@ app.post('/api/admin/logout', adminAuth, (req, res) => {
   return res.json({ message: 'Logged out successfully' });
 });
 
-const ordersDataDir = path.join(__dirname, 'data');
-const ordersDataFile = path.join(ordersDataDir, 'orders.fallback.json');
 const ORDERS_TABLE = 'orders';
-
-const ensureOrdersFile = () => {
-  if (!fs.existsSync(ordersDataDir)) {
-    fs.mkdirSync(ordersDataDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(ordersDataFile)) {
-    fs.writeFileSync(ordersDataFile, '[]', 'utf8');
-  }
-};
-
-const loadOrdersFromFile = () => {
-  try {
-    ensureOrdersFile();
-    const raw = fs.readFileSync(ordersDataFile, 'utf8');
-    const parsed = JSON.parse(raw || '[]');
-
-    if (!Array.isArray(parsed)) {
-      console.warn('orders.fallback.json is not an array. Starting with empty orders.');
-      return [];
-    }
-
-    return parsed;
-  } catch (error) {
-    console.warn('Failed to read orders.fallback.json. Starting with empty orders.', error.message);
-    return [];
-  }
-};
 
 let ordersStoreReadyPromise = null;
 let ordersRevenueColumnPromise = null;
 
 const normalizeOrderId = (value) => String(value ?? '').trim();
-
-const sortOrdersDesc = (items = []) => [...items].sort((a, b) => Number(b.id) - Number(a.id));
 
 const getOrdersPoolOrThrow = () => {
   const pool = getDbPool();
@@ -523,30 +491,6 @@ const ensureOrdersStore = async () => {
 
     if (totalOrders > 0) {
       return;
-    }
-
-    const fallbackOrders = sortOrdersDesc(loadOrdersFromFile());
-
-    if (fallbackOrders.length === 0) {
-      return;
-    }
-
-    const connection = await pool.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      for (const order of fallbackOrders) {
-        await insertOrderRecord(connection, order);
-      }
-
-      await connection.commit();
-      console.log(`Bootstrapped ${fallbackOrders.length} orders into MySQL`);
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
     }
   })();
 
@@ -1701,6 +1645,15 @@ app.get('/api/health', async (_req, res) => {
 const PORT = process.env.PORT || 1000;
 const startServer = async () => {
   try {
+    const missingDbEnvVars = getMissingDbEnvVars();
+
+    if (missingDbEnvVars.length > 0) {
+      throw new Error(
+        `Missing required database environment variables: ${missingDbEnvVars.join(', ')}. ` +
+          'Set them in Render Dashboard -> Environment before starting the service.'
+      );
+    }
+
     await connectDB();
     await ensureProductStore();
     await ensureWishlistStore();

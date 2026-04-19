@@ -1,34 +1,7 @@
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
 const { getDbPool } = require("../config/db");
 
 const PRODUCTS_TABLE = "products";
-
-const productsDataDir = path.join(__dirname, "..", "data");
-const productsDataFile = path.join(productsDataDir, "products.fallback.json");
-
-const ensureProductsFile = () => {
-  if (!fs.existsSync(productsDataDir)) {
-    fs.mkdirSync(productsDataDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(productsDataFile)) {
-    fs.writeFileSync(productsDataFile, "[]", "utf8");
-  }
-};
-
-const loadProductsFromFile = () => {
-  try {
-    ensureProductsFile();
-    const raw = fs.readFileSync(productsDataFile, "utf8");
-    const parsed = JSON.parse(raw || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.warn("Failed to read products fallback store:", error.message);
-    return [];
-  }
-};
 
 let productStoreReadyPromise = null;
 
@@ -162,14 +135,6 @@ const asyncHandler = (handler) => async (req, res) => {
       message: error.message || "Unexpected server error",
     });
   }
-};
-
-const sortProductsDesc = (items = []) => {
-  return [...items].sort((a, b) => {
-    const aTime = new Date(a.createdAt || 0).getTime();
-    const bTime = new Date(b.createdAt || 0).getTime();
-    return bTime - aTime;
-  });
 };
 
 const normalizeStoredProduct = (product) => {
@@ -344,35 +309,6 @@ const ensureProductStore = async () => {
 
     if (totalProducts > 0) {
       return;
-    }
-
-    const fallbackProducts = sortProductsDesc(loadProductsFromFile()).map(normalizeStoredProduct);
-
-    if (fallbackProducts.length === 0) {
-      return;
-    }
-
-    const connection = await pool.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      for (const product of fallbackProducts) {
-        await insertProductRecord(connection, {
-          ...product,
-          _id: String(product._id || crypto.randomUUID()),
-          createdAt: product.createdAt || new Date().toISOString(),
-          updatedAt: product.updatedAt || product.createdAt || new Date().toISOString(),
-        });
-      }
-
-      await connection.commit();
-      console.log(`Bootstrapped ${fallbackProducts.length} products into MySQL`);
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
     }
   })();
 
