@@ -4,7 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
+    "build:client": "npm --prefix ../client install && npm --prefix ../client run build",
     "dev": "node server.js",
+    "render-build": "npm install && npm run build:client",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },

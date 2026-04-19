@@ -3,7 +3,6 @@ console.log("RUNNING BACKEND FROM:", __filename);
 require('dotenv').config();
 
 const nodemailer = require('nodemailer');
-const Razorpay = require('razorpay');
 const express = require('express');
 const cors = require('cors');
 const sgMail = require('@sendgrid/mail');
@@ -12,6 +11,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getRazorpayClient, isRazorpayConfigured } = require('./lib/razorpay');
 const { connectDB, getDbPool, getMissingDbEnvVars } = require('./config/db');
 const { ensureProductStore, reserveProductStockInFile } = require('./controllers/productController');
 const productRoutes = require('./routes/productRoutes');
@@ -23,12 +23,6 @@ const app = express();
 
 // JSON body
 app.use(express.json({ limit: '50mb' }));
-
-// CORS (works perfectly on Render + Node 22)
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
 
 
 const distDir = path.join(__dirname, 'dist');
@@ -135,21 +129,33 @@ const isLocalDevOrigin = (origin) => {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(origin || '').trim());
 };
 
-// JSON body
-app.use(express.json({ limit: '50mb' }));
+const normalizeOrigin = (value) => {
+  const input = String(value || '').trim();
+  if (!input) return '';
+
+  try {
+    return new URL(input).origin;
+  } catch {
+    return input.replace(/\/$/, '');
+  }
+};
 
 const configuredOrigins = [
   ...String(process.env.CORS_ORIGIN || "")
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  normalizeOrigin(process.env.PUBLIC_BACKEND_URL),
+  normalizeOrigin(process.env.RENDER_EXTERNAL_URL),
+  'https://leostrend.com',
+  'https://www.leostrend.com',
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "http://localhost:3001",
   "http://127.0.0.1:3001",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-];
+].filter(Boolean);
 
 const allowedOrigins = [...new Set(configuredOrigins)];
 
@@ -1214,6 +1220,7 @@ const getPaidAtIsoString = (unixTimestamp) => {
 };
 
 const buildPaymentDetails = async ({ paymentInput, fallbackAmount, fallbackCurrency, customerEmail, customerPhone }) => {
+  const razorpay = getRazorpayClient();
   const razorpayOrderId = String(paymentInput?.razorpayOrderId || '').trim();
   const razorpayPaymentId = String(paymentInput?.razorpayPaymentId || '').trim();
   const razorpaySignature = String(paymentInput?.razorpaySignature || '').trim();
@@ -1678,6 +1685,7 @@ app.get('/api/test-email', async (req, res) => {
 app.get('/api/health', async (_req, res) => {
   try {
     const pool = getDbPool();
+    const razorpayConfigured = isRazorpayConfigured();
 
     if (!pool) {
       return res.status(503).json({
@@ -1686,6 +1694,7 @@ app.get('/api/health', async (_req, res) => {
         dbProvider: 'mysql',
         productPersistence: 'mysql',
         orderPersistence: 'mysql',
+        razorpayConfigured,
         message: 'MySQL pool is not initialized',
       });
     }
@@ -1700,6 +1709,7 @@ app.get('/api/health', async (_req, res) => {
       sslEnabled: true,
       productPersistence: 'mysql',
       orderPersistence: 'mysql',
+      razorpayConfigured,
     });
   } catch (error) {
     return res.status(503).json({
@@ -1708,6 +1718,7 @@ app.get('/api/health', async (_req, res) => {
       dbProvider: 'mysql',
       productPersistence: 'mysql',
       orderPersistence: 'mysql',
+      razorpayConfigured: isRazorpayConfigured(),
       message: error.message,
     });
   }

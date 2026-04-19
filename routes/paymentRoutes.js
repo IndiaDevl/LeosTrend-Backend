@@ -1,18 +1,14 @@
 const express = require('express');
-const Razorpay = require('razorpay');
 const router = express.Router();
+const { getRazorpayClient, getRazorpayConfig } = require('../lib/razorpay');
 
 // Debug route to verify correct backend instance
-
-// Initialize Razorpay instance
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
-});
 
 // POST /api/payment/razorpay/order
 router.post('/razorpay/order', async (req, res) => {
   try {
+    const razorpay = getRazorpayClient();
+    const { keyId } = getRazorpayConfig();
     const { amount, currency = 'INR', receipt = `order_rcptid_${Date.now()}` } = req.body;
     if (!amount) {
       return res.status(400).json({ error: 'Amount is required' });
@@ -28,13 +24,13 @@ router.post('/razorpay/order', async (req, res) => {
       id: order.id,
       amount: order.amount,
       currency: order.currency,
-      key_id: process.env.RAZORPAY_KEY_ID,
+      key_id: keyId,
       receipt: order.receipt,
       status: order.status
     });
   } catch (err) {
     console.error('Razorpay order error:', err);
-    res.status(500).json({ error: 'Failed to create Razorpay order', details: err.message });
+    res.status(err.statusCode || 500).json({ error: 'Failed to create Razorpay order', details: err.message });
   }
 });
 
