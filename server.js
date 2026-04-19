@@ -78,6 +78,18 @@ const normalizePhone = (value) => {
   return digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly;
 };
 
+const getAdminConfigStatus = () => {
+  const hasCredentials = Boolean(process.env.ADMIN_USERNAME)
+    && Boolean(process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD_HASH);
+  const hasTokenConfig = Boolean(process.env.ADMIN_JWT_SECRET || process.env.ADMIN_TOKEN);
+
+  return {
+    hasCredentials,
+    hasTokenConfig,
+    configured: hasCredentials && hasTokenConfig,
+  };
+};
+
 const MAIL_FROM_EMAIL = process.env.MAIL_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || 'lt@leostrend.com';
 const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'LeosTrend';
 const MAIL_REPLY_TO = process.env.MAIL_REPLY_TO || process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SENDGRID_FROM_EMAIL || MAIL_FROM_EMAIL;
@@ -207,12 +219,13 @@ app.post('/api/admin/login', (req, res) => {
   const expectedPassHash = process.env.ADMIN_PASSWORD_HASH;
   const jwtSecret = process.env.ADMIN_JWT_SECRET;
   const fallbackToken = process.env.ADMIN_TOKEN;
+  const adminConfigStatus = getAdminConfigStatus();
 
-  if (!expectedUser || (!expectedPass && !expectedPassHash)) {
+  if (!adminConfigStatus.hasCredentials || !expectedUser || (!expectedPass && !expectedPassHash)) {
     return res.status(500).json({ message: 'Admin credentials are not configured' });
   }
 
-  if (!jwtSecret && !fallbackToken) {
+  if (!adminConfigStatus.hasTokenConfig || (!jwtSecret && !fallbackToken)) {
     return res.status(500).json({ message: 'Admin token configuration is missing' });
   }
 
@@ -1686,6 +1699,7 @@ app.get('/api/health', async (_req, res) => {
   try {
     const pool = getDbPool();
     const razorpayConfigured = isRazorpayConfigured();
+    const adminConfigured = getAdminConfigStatus().configured;
 
     if (!pool) {
       return res.status(503).json({
@@ -1694,6 +1708,7 @@ app.get('/api/health', async (_req, res) => {
         dbProvider: 'mysql',
         productPersistence: 'mysql',
         orderPersistence: 'mysql',
+        adminConfigured,
         razorpayConfigured,
         message: 'MySQL pool is not initialized',
       });
@@ -1709,6 +1724,7 @@ app.get('/api/health', async (_req, res) => {
       sslEnabled: true,
       productPersistence: 'mysql',
       orderPersistence: 'mysql',
+      adminConfigured,
       razorpayConfigured,
     });
   } catch (error) {
@@ -1718,6 +1734,7 @@ app.get('/api/health', async (_req, res) => {
       dbProvider: 'mysql',
       productPersistence: 'mysql',
       orderPersistence: 'mysql',
+      adminConfigured: getAdminConfigStatus().configured,
       razorpayConfigured: isRazorpayConfigured(),
       message: error.message,
     });
