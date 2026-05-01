@@ -1,0 +1,4 @@
+{
+    "create":  "{\"message\":\"Failed to add product\",\"error\":\"connect ECONNREFUSED 127.0.0.1:54000\"}\r\n",
+    "error":  "The remote server returned an error: (500) Internal Server Error."
+}

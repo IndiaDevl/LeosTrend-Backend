@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"name": "LeosTrend-Backend",
+			"path": "."
+		},
+		{
+			"name": "LeosTrend-Frontend",
+			"path": "../LeosTrend-Frontend"
+		}
+	],
+	"settings": {
+		"github.copilot.nextEditSuggestions.enabled": true
+	}
+}
