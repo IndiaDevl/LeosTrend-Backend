@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { getRazorpayClient, isRazorpayConfigured } = require('./lib/razorpay');
 const { connectDB, getDbPool, getMissingDbEnvVars } = require('./config/db');
 const { ensureProductStore, reserveProductStockInFile } = require('./controllers/productController');
