@@ -1256,6 +1256,63 @@ function verifyRazorpaySignature({ razorpayOrderId, razorpayPaymentId, razorpayS
 // };
 
 
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  host: 'smtp-relay.brevo.com',
+  port: 587,
+  secure: false, // true for 465, false for 587
+  auth: {
+    user: 'a9ea58001@smtp-brevo.com', // Your Brevo SMTP login (from your screenshot)
+    pass: process.env.BREVO_SMTP_KEY,
+  },
+});
+
+const sendOrderConfirmationEmail = async (order) => {
+  if (!order?.email) return;
+  const itemsHtml = (order.items || []).map(item => `
+    <tr>
+      <td>${item.name}</td>
+      <td>${item.size || ''}</td>
+      <td style="text-align:center">${item.quantity}</td>
+      <td style="text-align:right">₹${item.price}</td>
+      <td style="text-align:right">₹${(item.price * item.quantity).toFixed(2)}</td>
+    </tr>
+  `).join('');
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:auto;">
+      <h2 style="color:#222;">Thank you for your order at LeosTrend!</h2>
+      <p>Hi <b>${order.customer}</b>,<br>Your order <b>${order.orderNumber}</b> has been received and is being processed.</p>
+      <h3>Order Summary</h3>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f5f5f5;">
+            <th align="left">Product</th><th align="left">Size</th><th>Qty</th><th align="right">Unit Price</th><th align="right">Total</th>
+          </tr>
+        </thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      <p style="margin-top:16px;"><b>Total:</b> ₹${order.total}</p>
+      <h3>Delivery Address</h3>
+      <p>${order.shippingAddress.replace(/\n/g, '<br>')}</p>
+      <p style="margin-top:24px;">We’ll notify you when your order ships.<br>Thank you for shopping with us!</p>
+      <hr><small>LeosTrend | lt@leostrend.com</small>
+    </div>
+  `;
+  console.log(`[EMAIL] Preparing to send order confirmation to ${order.email}`);
+  const mailOptions = {
+    from: '"LeosTrend" <lt@leostrend.com>',
+    to: order.email,
+    subject: `Order Confirmation - ${order.orderNumber}`,
+    html,
+  };
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`[EMAIL] Order confirmation sent to ${order.email}`);
+  } catch (err) {
+    console.error('[EMAIL] Brevo SMTP error:', err);
+  }
+};
 
 const PORT = process.env.PORT || 1000;
 const startServer = async () => {
