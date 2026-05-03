@@ -951,14 +951,16 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// app.get('/api/orders', requireEmailOtpSession, async (req, res) => {
-//   try {
-//     const { key } = req.otpSession;
-//     return res.json(await fetchOrdersForCustomer({ email: key }));
-//   } catch (error) {
-//     return res.status(500).json({ message: 'Failed to load orders' });
-//   }
-// });
+
+// GET: Admin fetch all orders
+app.get('/api/orders', adminAuth, async (req, res) => {
+  try {
+    const orders = await fetchOrdersForAdmin();
+    res.json({ success: true, orders });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load orders' });
+  }
+});
 
 app.get('/api/orders/:id', async (req, res) => {
   const order = await fetchOrderById(req.params.id);
