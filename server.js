@@ -850,9 +850,16 @@ const buildPaymentDetails = async ({ paymentInput, fallbackAmount, fallbackCurre
 // Order Placement (WhatsApp notification removed)
 app.post('/api/orders', async (req, res) => {
   try {
-    const { customer, items, total, shippingAddress, phone, email, payment } = req.body;
+
+    const SHIPPING_FEE = 70;
+    const { customer, items, shippingAddress, phone, email, payment } = req.body;
     const normalizedPhone = normalizePhone(phone);
-    console.log('[ORDER] Incoming order:', { customer, items, total, shippingAddress, phone, email, payment });
+    // Calculate subtotal from items
+    const subtotal = Array.isArray(items)
+      ? items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0)
+      : 0;
+    const total = subtotal + SHIPPING_FEE;
+    console.log('[ORDER] Incoming order:', { customer, items, subtotal, shipping: SHIPPING_FEE, total, shippingAddress, phone, email, payment });
 
     if (!customer || !items || !phone) {
       console.error('[ORDER] Missing required fields');
@@ -895,6 +902,8 @@ app.post('/api/orders', async (req, res) => {
       phoneNormalized: normalizedPhone,
       email: String(email || paymentDetails.email || '').trim().toLowerCase(),
       items,
+      subtotal,
+      shipping: SHIPPING_FEE,
       total,
       shippingAddress,
       payment: paymentDetails,
