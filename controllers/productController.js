@@ -189,15 +189,17 @@ const normalizeStoredProduct = (product) => {
   )];
   const mergedImages = [...new Set([safeImageUrl, ...safeGalleryImages].filter(Boolean))];
 
-  return {
-    ...product,
-    imageUrl: safeImageUrl || mergedImages[0] || "",
-    image: safeImageUrl || mergedImages[0] || "",
-    images: mergedImages,
-    galleryImages: mergedImages.slice(1),
-    additionalImages: mergedImages.slice(1),
-    gallery: mergedImages.slice(1),
-  };
+ return {
+  id: product.id || product._id,
+  _id: product._id || product.id,
+  ...product,
+  imageUrl: safeImageUrl || mergedImages[0] || "",
+  image: safeImageUrl || mergedImages[0] || "",
+  images: mergedImages,
+  galleryImages: mergedImages.slice(1),
+  additionalImages: mergedImages.slice(1),
+  gallery: mergedImages.slice(1),
+};
 };
 
 const getPoolOrThrow = () => {
@@ -475,13 +477,16 @@ exports.addProduct = asyncHandler(async (req, res) => {
   const payload = normalizePayload(req.body, req.files, { requireImage: true });
   const timestamp = new Date().toISOString();
 
-  const product = normalizeStoredProduct({
-    _id: crypto.randomUUID(),
-    ...payload,
-    image: payload.imageUrl,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  });
+  const generatedId = crypto.randomUUID();
+
+const product = normalizeStoredProduct({
+  id: generatedId,
+  _id: generatedId,
+  ...payload,
+  image: payload.imageUrl,
+  createdAt: timestamp,
+  updatedAt: timestamp,
+});
 
   if (!hasDatabaseConnection()) {
     const products = sortProductsDesc(loadProductsFromFile().map(normalizeStoredProduct));
