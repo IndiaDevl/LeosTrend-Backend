@@ -51,6 +51,7 @@ const configuredOrigins = [
   'https://www.leostrend.com',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
+  'http://localhost:3001',
 ].filter(Boolean);
 
 const allowedOrigins = [...new Set(configuredOrigins)];
@@ -851,7 +852,7 @@ const buildPaymentDetails = async ({ paymentInput, fallbackAmount, fallbackCurre
 app.post('/api/orders', async (req, res) => {
   try {
 
-    const SHIPPING_FEE = 70;
+    const SHIPPING_FEE = 0;
     const { customer, items, shippingAddress, phone, email, payment } = req.body;
     const normalizedPhone = normalizePhone(phone);
     // Calculate subtotal from items
