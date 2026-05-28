@@ -6,6 +6,7 @@ const { getDbPool } = require("../config/db");
 const PRODUCTS_TABLE = "products";
 const productsDataDir = path.join(__dirname, "..", "data");
 const productsDataFile = path.join(productsDataDir, "products.fallback.json");
+const TRENDING_LIMIT = 4;
 
 let productStoreReadyPromise = null;
 
@@ -47,6 +48,19 @@ const parseCsvField = (value) => {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+};
+
+const normalizeTrendingPosition = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    return null;
+  }
+
+  return Math.min(TRENDING_LIMIT, Math.max(1, parsed));
 };
 
 const normalizeImageUrlValue = (value) => {
@@ -129,6 +143,7 @@ const normalizePayload = (body, files, { requireImage = false } = {}) => {
   if (body.careInstructions !== undefined) payload.careInstructions = body.careInstructions;
   if (body.sku !== undefined) payload.sku = body.sku;
   if (body.isTrending !== undefined) payload.isTrending = body.isTrending === true || body.isTrending === "true" || body.isTrending === "1" || body.isTrending === 1;
+  if (body.trendingPosition !== undefined) payload.trendingPosition = normalizeTrendingPosition(body.trendingPosition);
 
   const primaryFile = files?.image?.[0];
   const galleryFiles = Array.isArray(files?.galleryImages) ? files.galleryImages : [];
@@ -152,6 +167,10 @@ const normalizePayload = (body, files, { requireImage = false } = {}) => {
     const error = new Error("Product image is required");
     error.statusCode = 400;
     throw error;
+  }
+
+  if (payload.isTrending === false) {
+    payload.trendingPosition = null;
   }
 
   return payload;
@@ -180,6 +199,205 @@ const sortProductsDesc = (items = []) => {
   });
 };
 
+const getCategoryKey = (value) => String(value || "").trim().toLowerCase();
+
+const getProductTimestamp = (product) => {
+  const value = product?.updatedAt || product?.createdAt || 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const sortTrendingCandidates = (left, right) => {
+  const leftPosition = normalizeTrendingPosition(left.trendingPosition) ?? Number.MAX_SAFE_INTEGER;
+  const rightPosition = normalizeTrendingPosition(right.trendingPosition) ?? Number.MAX_SAFE_INTEGER;
+
+  if (leftPosition !== rightPosition) {
+    return leftPosition - rightPosition;
+  }
+
+  return getProductTimestamp(right) - getProductTimestamp(left);
+};
+
+const reconcileCategoryTrendingAssignments = (
+  products,
+  { updatedProductId = null, previousTrendingPosition = null } = {}
+) => {
+  const nextProducts = products.map((product) => ({ ...product }));
+  const normalizedUpdatedId = updatedProductId ? String(updatedProductId) : null;
+  const updatedProduct = normalizedUpdatedId
+    ? nextProducts.find((product) => String(product._id) === normalizedUpdatedId)
+    : null;
+  const updatedTargetPosition = normalizeTrendingPosition(updatedProduct?.trendingPosition);
+  const previousPosition = normalizeTrendingPosition(previousTrendingPosition);
+  const assignedPositions = new Map();
+  const usedPositions = new Set();
+
+  const assignPosition = (product, position) => {
+    const normalizedPosition = normalizeTrendingPosition(position);
+    if (!product || !normalizedPosition || usedPositions.has(normalizedPosition)) {
+      return false;
+    }
+
+    usedPositions.add(normalizedPosition);
+    assignedPositions.set(String(product._id), normalizedPosition);
+    return true;
+  };
+
+  if (updatedProduct?.isTrending && updatedTargetPosition) {
+    assignPosition(updatedProduct, updatedTargetPosition);
+  }
+
+  const remainingTrendingProducts = nextProducts
+    .filter((product) => product.isTrending && String(product._id) !== normalizedUpdatedId)
+    .sort(sortTrendingCandidates);
+
+  for (const product of remainingTrendingProducts) {
+    const currentPosition = normalizeTrendingPosition(product.trendingPosition);
+    const preferredPositions = [];
+
+    if (
+      previousPosition &&
+      updatedTargetPosition &&
+      currentPosition === updatedTargetPosition &&
+      previousPosition !== updatedTargetPosition
+    ) {
+      preferredPositions.push(previousPosition);
+    }
+
+    if (currentPosition) {
+      preferredPositions.push(currentPosition);
+    }
+
+    for (let position = 1; position <= TRENDING_LIMIT; position += 1) {
+      if (!preferredPositions.includes(position)) {
+        preferredPositions.push(position);
+      }
+    }
+
+    const nextPosition = preferredPositions.find((position) => !usedPositions.has(position));
+    if (nextPosition) {
+      assignPosition(product, nextPosition);
+    }
+  }
+
+  return nextProducts.map((product) => {
+    const assignedPosition = assignedPositions.get(String(product._id));
+    if (assignedPosition) {
+      return {
+        ...product,
+        isTrending: true,
+        trendingPosition: assignedPosition,
+      };
+    }
+
+    if (product.isTrending) {
+      return {
+        ...product,
+        isTrending: false,
+        trendingPosition: null,
+      };
+    }
+
+    return {
+      ...product,
+      trendingPosition: normalizeTrendingPosition(product.trendingPosition),
+    };
+  });
+};
+
+const reconcileTrendingAssignments = (
+  products,
+  { updatedProductId = null, previousTrendingPosition = null } = {}
+) => {
+  const normalizedUpdatedId = updatedProductId ? String(updatedProductId) : null;
+  const nextProducts = products.map((product) => ({ ...product }));
+  const updatedProduct = normalizedUpdatedId
+    ? nextProducts.find((product) => String(product._id) === normalizedUpdatedId)
+    : null;
+
+  if (!updatedProduct) {
+    return nextProducts;
+  }
+
+  const targetCategory = getCategoryKey(updatedProduct.category);
+  if (!targetCategory) {
+    return nextProducts;
+  }
+
+  const categoryProducts = nextProducts.filter(
+    (product) => getCategoryKey(product.category) === targetCategory
+  );
+  const reconciledCategoryProducts = reconcileCategoryTrendingAssignments(categoryProducts, {
+    updatedProductId,
+    previousTrendingPosition,
+  });
+  const reconciledById = new Map(
+    reconciledCategoryProducts.map((product) => [String(product._id), product])
+  );
+
+  return nextProducts.map((product) =>
+    reconciledById.get(String(product._id)) || product
+  );
+};
+
+const syncTrendingAssignmentsInDatabase = async (
+  connection,
+  product,
+  { previousTrendingPosition = null } = {}
+) => {
+  const categoryKey = getCategoryKey(product?.category);
+  if (!categoryKey) {
+    return product;
+  }
+
+  const [rows] = await connection.query(
+    `SELECT * FROM ${PRODUCTS_TABLE} WHERE LOWER(TRIM(category)) = ? ORDER BY created_at DESC`,
+    [categoryKey]
+  );
+  const categoryProducts = (Array.isArray(rows) ? rows : []).map(mapRowToProduct);
+  const reconciledProducts = reconcileCategoryTrendingAssignments(categoryProducts, {
+    updatedProductId: product._id,
+    previousTrendingPosition,
+  });
+  const currentById = new Map(categoryProducts.map((item) => [String(item._id), item]));
+  const syncedAt = new Date().toISOString();
+
+  for (const reconciledProduct of reconciledProducts) {
+    const currentProduct = currentById.get(String(reconciledProduct._id));
+    if (!currentProduct) {
+      continue;
+    }
+
+    const currentPosition = normalizeTrendingPosition(currentProduct.trendingPosition);
+    const reconciledPosition = normalizeTrendingPosition(reconciledProduct.trendingPosition);
+
+    if (
+      Boolean(currentProduct.isTrending) === Boolean(reconciledProduct.isTrending) &&
+      currentPosition === reconciledPosition
+    ) {
+      continue;
+    }
+
+    await connection.query(
+      `
+        UPDATE ${PRODUCTS_TABLE}
+        SET is_trending = ?,
+            trending_position = ?,
+            updated_at = ?
+        WHERE id = ?
+      `,
+      [
+        reconciledProduct.isTrending ? 1 : 0,
+        reconciledProduct.isTrending ? reconciledPosition : null,
+        syncedAt,
+        reconciledProduct._id,
+      ]
+    );
+  }
+
+  return reconciledProducts.find((item) => String(item._id) === String(product._id)) || product;
+};
+
 const normalizeStoredProduct = (product) => {
   const safeImageUrl = normalizeImageUrlValue(product.imageUrl || product.image);
   const safeGalleryImages = [...new Set(
@@ -188,11 +406,14 @@ const normalizeStoredProduct = (product) => {
       .filter(Boolean)
   )];
   const mergedImages = [...new Set([safeImageUrl, ...safeGalleryImages].filter(Boolean))];
+  const trendingPosition = normalizeTrendingPosition(product.trendingPosition);
 
  return {
   id: product.id || product._id,
   _id: product._id || product.id,
   ...product,
+  isTrending: Boolean(product.isTrending),
+  trendingPosition,
   imageUrl: safeImageUrl || mergedImages[0] || "",
   image: safeImageUrl || mergedImages[0] || "",
   images: mergedImages,
@@ -200,6 +421,41 @@ const normalizeStoredProduct = (product) => {
   additionalImages: mergedImages.slice(1),
   gallery: mergedImages.slice(1),
 };
+};
+
+const seedTrendingDefaults = (products = []) => {
+  const nextProducts = products.map((product) => ({ ...product }));
+  const groupedProducts = new Map();
+  let changed = false;
+
+  nextProducts.forEach((product) => {
+    const categoryKey = String(product.category || "").trim().toLowerCase();
+    if (!categoryKey) {
+      return;
+    }
+
+    if (!groupedProducts.has(categoryKey)) {
+      groupedProducts.set(categoryKey, []);
+    }
+
+    groupedProducts.get(categoryKey).push(product);
+  });
+
+  groupedProducts.forEach((categoryProducts) => {
+    if (categoryProducts.some((product) => product.isTrending)) {
+      return;
+    }
+
+    sortProductsDesc(categoryProducts)
+      .slice(0, TRENDING_LIMIT)
+      .forEach((product, index) => {
+        product.isTrending = true;
+        product.trendingPosition = index + 1;
+        changed = true;
+      });
+  });
+
+  return { products: nextProducts, changed };
 };
 
 const getPoolOrThrow = () => {
@@ -251,6 +507,7 @@ const mapRowToProduct = (row) => {
     careInstructions: row.care_instructions,
     sku: row.sku,
     isTrending: row.is_trending === 1 || row.is_trending === true,
+    trendingPosition: row.trending_position,
     imageUrl: row.image_url,
     galleryImages: parseJsonArray(row.gallery_images),
     createdAt: toIsoString(row.created_at),
@@ -278,12 +535,13 @@ const insertProductRecord = async (connection, product) => {
         care_instructions,
         sku,
         is_trending,
+        trending_position,
         image_url,
         gallery_images,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       product._id,
@@ -302,6 +560,7 @@ const insertProductRecord = async (connection, product) => {
       product.careInstructions || "",
       product.sku || "",
       product.isTrending ? 1 : 0,
+      product.isTrending ? normalizeTrendingPosition(product.trendingPosition) : null,
       product.imageUrl || "",
       JSON.stringify(Array.isArray(product.galleryImages) ? product.galleryImages : []),
       product.createdAt,
@@ -318,6 +577,10 @@ const ensureProductStore = async () => {
   productStoreReadyPromise = (async () => {
     if (!hasDatabaseConnection()) {
       ensureProductsFile();
+      const seededProducts = seedTrendingDefaults(loadProductsFromFile().map(normalizeStoredProduct));
+      if (seededProducts.changed) {
+        saveProductsToFile(seededProducts.products);
+      }
       return;
     }
 
@@ -363,6 +626,83 @@ const ensureProductStore = async () => {
         ALTER TABLE ${PRODUCTS_TABLE}
         ADD COLUMN is_trending TINYINT(1) NOT NULL DEFAULT 0 AFTER sku
       `);
+    }
+
+    const [trendingPositionColumns] = await pool.query(`SHOW COLUMNS FROM ${PRODUCTS_TABLE} LIKE 'trending_position'`);
+    if (!Array.isArray(trendingPositionColumns) || trendingPositionColumns.length === 0) {
+      await pool.query(`
+        ALTER TABLE ${PRODUCTS_TABLE}
+        ADD COLUMN trending_position TINYINT NULL AFTER is_trending
+      `);
+    }
+
+    const [seedRows] = await pool.query(`
+      SELECT id, category, is_trending, trending_position
+      FROM ${PRODUCTS_TABLE}
+      ORDER BY created_at DESC
+    `);
+    const groupedSeedRows = new Map();
+
+    for (const row of Array.isArray(seedRows) ? seedRows : []) {
+      const categoryKey = String(row.category || "").trim().toLowerCase();
+      if (!categoryKey) {
+        continue;
+      }
+
+      if (!groupedSeedRows.has(categoryKey)) {
+        groupedSeedRows.set(categoryKey, []);
+      }
+
+      groupedSeedRows.get(categoryKey).push(row);
+    }
+
+    const seededAt = new Date().toISOString().slice(0, 23).replace("T", " ");
+    for (const rows of groupedSeedRows.values()) {
+      const featuredRows = rows.filter((row) => row.is_trending === 1 || row.is_trending === true);
+      const assignedPositions = new Set();
+      const updates = [];
+
+      for (const row of featuredRows) {
+        const normalizedPosition = normalizeTrendingPosition(row.trending_position);
+        if (normalizedPosition && !assignedPositions.has(normalizedPosition)) {
+          assignedPositions.add(normalizedPosition);
+          continue;
+        }
+
+        updates.push(row);
+      }
+
+      const nextOpenPositions = [];
+      for (let position = 1; position <= TRENDING_LIMIT; position += 1) {
+        if (!assignedPositions.has(position)) {
+          nextOpenPositions.push(position);
+        }
+      }
+
+      if (featuredRows.length === 0) {
+        rows.slice(0, TRENDING_LIMIT).forEach((row, index) => {
+          updates.push({ ...row, is_trending: 1, trending_position: index + 1, forceTrending: true });
+        });
+      }
+
+      for (let index = 0; index < updates.length; index += 1) {
+        const row = updates[index];
+        const nextPosition = row.forceTrending ? row.trending_position : nextOpenPositions[index] || null;
+        if (!nextPosition) {
+          continue;
+        }
+
+        await pool.query(
+          `
+            UPDATE ${PRODUCTS_TABLE}
+            SET is_trending = ?,
+                trending_position = ?,
+                updated_at = ?
+            WHERE id = ?
+          `,
+          [row.forceTrending ? 1 : 1, nextPosition, seededAt, row.id]
+        );
+      }
     }
   })();
 
@@ -483,6 +823,7 @@ const product = normalizeStoredProduct({
   id: generatedId,
   _id: generatedId,
   ...payload,
+  trendingPosition: payload.isTrending ? normalizeTrendingPosition(payload.trendingPosition) : null,
   image: payload.imageUrl,
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -491,13 +832,19 @@ const product = normalizeStoredProduct({
   if (!hasDatabaseConnection()) {
     const products = sortProductsDesc(loadProductsFromFile().map(normalizeStoredProduct));
     products.unshift(product);
-    saveProductsToFile(products);
-    return res.status(201).json(product);
+    const reconciledProducts = reconcileTrendingAssignments(products, {
+      updatedProductId: product._id,
+    });
+    const createdProduct =
+      reconciledProducts.find((item) => String(item._id) === String(product._id)) || product;
+    saveProductsToFile(reconciledProducts);
+    return res.status(201).json(createdProduct);
   }
 
   const pool = getPoolOrThrow();
   await insertProductRecord(pool, product);
-  return res.status(201).json(product);
+  const createdProduct = await syncTrendingAssignmentsInDatabase(pool, product);
+  return res.status(201).json(createdProduct);
 });
 
 exports.getProducts = asyncHandler(async (_req, res) => {
@@ -521,6 +868,12 @@ exports.updateProduct = asyncHandler(async (req, res) => {
   const updatedProduct = normalizeStoredProduct({
     ...existing,
     ...payload,
+    trendingPosition:
+      payload.isTrending === false
+        ? null
+        : payload.trendingPosition !== undefined
+          ? normalizeTrendingPosition(payload.trendingPosition)
+          : existing.trendingPosition ?? null,
     image: payload.imageUrl || existing.image || existing.imageUrl,
     galleryImages:
       payload.galleryImages !== undefined
@@ -528,14 +881,21 @@ exports.updateProduct = asyncHandler(async (req, res) => {
         : existing.galleryImages || existing.images?.slice(1) || [],
     updatedAt: new Date().toISOString(),
   });
+  const previousTrendingPosition = existing.trendingPosition ?? null;
 
   if (!hasDatabaseConnection()) {
     const products = loadProductsFromFile().map(normalizeStoredProduct);
     const nextProducts = products.map((product) =>
       String(product._id) === String(req.params.id) ? updatedProduct : product
     );
-    saveProductsToFile(nextProducts);
-    return res.json(updatedProduct);
+    const reconciledProducts = reconcileTrendingAssignments(nextProducts, {
+      updatedProductId: updatedProduct._id,
+      previousTrendingPosition,
+    });
+    const savedProduct =
+      reconciledProducts.find((product) => String(product._id) === String(updatedProduct._id)) || updatedProduct;
+    saveProductsToFile(reconciledProducts);
+    return res.json(savedProduct);
   }
 
   const pool = getPoolOrThrow();
@@ -558,6 +918,7 @@ exports.updateProduct = asyncHandler(async (req, res) => {
         care_instructions = ?,
         sku = ?,
         is_trending = ?,
+        trending_position = ?,
         image_url = ?,
         gallery_images = ?,
         updated_at = ?
@@ -579,6 +940,7 @@ exports.updateProduct = asyncHandler(async (req, res) => {
       updatedProduct.careInstructions || "",
       updatedProduct.sku || "",
       updatedProduct.isTrending ? 1 : 0,
+      updatedProduct.isTrending ? normalizeTrendingPosition(updatedProduct.trendingPosition) : null,
       updatedProduct.imageUrl || "",
       JSON.stringify(Array.isArray(updatedProduct.galleryImages) ? updatedProduct.galleryImages : []),
       updatedProduct.updatedAt,
@@ -586,7 +948,11 @@ exports.updateProduct = asyncHandler(async (req, res) => {
     ]
   );
 
-  return res.json(updatedProduct);
+  const savedProduct = await syncTrendingAssignmentsInDatabase(pool, updatedProduct, {
+    previousTrendingPosition,
+  });
+
+  return res.json(savedProduct);
 });
 
 exports.deleteProduct = asyncHandler(async (req, res) => {

@@ -14,6 +14,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { getRazorpayClient, isRazorpayConfigured } = require('./lib/razorpay');
+const { getOptimizedLocalImage, sanitizeRelativeUploadPath } = require('./lib/localImageOptimizer');
 const { connectDB, getDbPool, getMissingDbEnvVars } = require('./config/db');
 const { ensureProductStore, reserveProductStockInFile } = require('./controllers/productController');
 const productRoutes = require('./routes/productRoutes');
@@ -188,7 +189,51 @@ const ordersDataFile = path.join(ordersDataDir, 'orders.fallback.json');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadsDir));
+
+const uploadStaticOptions = {
+  etag: true,
+  lastModified: true,
+  maxAge: '7d',
+  setHeaders: (res, filePath) => {
+    const normalizedPath = String(filePath || '').replace(/\\/g, '/');
+    if (normalizedPath.includes('/_optimized/')) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
+      return;
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+  },
+};
+
+app.get('/api/image', async (req, res) => {
+  try {
+    const requestedSrc = String(req.query.src || '').trim();
+    const relativeUploadPath = sanitizeRelativeUploadPath(requestedSrc);
+
+    if (!relativeUploadPath) {
+      return res.status(400).json({ message: 'A valid local upload image source is required' });
+    }
+
+    const optimizedImage = await getOptimizedLocalImage(uploadsDir, relativeUploadPath, {
+      width: req.query.w,
+      height: req.query.h,
+      quality: req.query.q,
+    });
+
+    if (!optimizedImage?.filePath) {
+      return res.status(404).json({ message: 'Image not found' });
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
+    res.type(optimizedImage.mimeType || 'image/webp');
+    return res.sendFile(optimizedImage.filePath);
+  } catch (error) {
+    console.error('IMAGE OPTIMIZER ERROR:', error);
+    return res.status(500).json({ message: 'Failed to optimize image' });
+  }
+});
+
+app.use('/uploads', express.static(uploadsDir, uploadStaticOptions));
 app.use('/api/products', productRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/payment', paymentRoutes);
