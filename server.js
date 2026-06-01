@@ -6,6 +6,7 @@ require('dotenv').config();
 
 // const nodemailer = require('nodemailer'); // Removed: no longer used
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const sgMail = require('@sendgrid/mail');
 const path = require('path');
@@ -24,6 +25,11 @@ const nodemailer = require('nodemailer');
 // const emailOtpRoutes = emailOtpRoutesModule.router;
 // const requireEmailOtpSession = emailOtpRoutesModule.requireEmailOtpSession;
 const app = express();
+const JSON_BODY_LIMIT = String(process.env.JSON_BODY_LIMIT || '1mb').trim() || '1mb';
+const ENABLE_VERBOSE_ORDER_LOGS = String(process.env.ENABLE_VERBOSE_ORDER_LOGS || '').trim().toLowerCase() === 'true';
+
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 
 // --- CORS config and middleware (must be before any routes) ---
 let ordersRevenueColumnPromise = null;
@@ -73,9 +79,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
+app.use(compression({ threshold: 1024 }));
 
 // JSON body parser must come BEFORE all routes
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 // app.use('/api/email-otp', emailOtpRoutes); // Removed: no longer used
 const { ensureWishlistStore } = require('./controllers/wishlistController');
@@ -87,10 +94,29 @@ const adminAuth = require('./middleware/adminAuth');
 const distDir = path.join(__dirname, 'dist');
 const distIndexFile = path.join(distDir, 'index.html');
 const hasFrontendBuild = fs.existsSync(distIndexFile);
+const frontendStaticOptions = {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    const normalizedPath = String(filePath || '').replace(/\\/g, '/');
+
+    if (normalizedPath.endsWith('/index.html')) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      return;
+    }
+
+    if (/\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8,}\.(?:js|css|png|jpe?g|gif|svg|webp|woff2?)$/i.test(normalizedPath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return;
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+  },
+};
 
 // Serve static frontend files
 if (hasFrontendBuild) {
-  app.use(express.static(distDir));
+  app.use(express.static(distDir, frontendStaticOptions));
 }
 
 
@@ -450,7 +476,18 @@ const mapRowToOrder = (row) => ({
   updatedAt: toIsoValue(row.updated_at),
 });
 
+const getOrderPaymentReference = (order = {}) => {
+  const payment = order.payment || {};
+
+  return {
+    razorpayOrderId: String(order.razorpayOrderId || payment.razorpayOrderId || '').trim(),
+    razorpayPaymentId: String(order.razorpayPaymentId || payment.razorpayPaymentId || '').trim(),
+  };
+};
+
 const insertOrderRecord = async (connection, order) => {
+  const paymentReference = getOrderPaymentReference(order);
+
   await connection.query(
     `
       INSERT INTO ${ORDERS_TABLE} (
@@ -464,13 +501,15 @@ const insertOrderRecord = async (connection, order) => {
         items,
         total,
         shipping_address,
+        razorpay_order_id,
+        razorpay_payment_id,
         payment,
         status,
         status_timeline,
         last_updated_at,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       order.id,
@@ -483,6 +522,8 @@ const insertOrderRecord = async (connection, order) => {
       JSON.stringify(Array.isArray(order.items) ? order.items : []),
       Number(order.total || 0),
       order.shippingAddress || '',
+      paymentReference.razorpayOrderId || null,
+      paymentReference.razorpayPaymentId || null,
       JSON.stringify(order.payment || {}),
       order.status || ORDER_STATUS.PENDING,
       JSON.stringify(Array.isArray(order.statusTimeline) ? order.statusTimeline : []),
@@ -491,6 +532,42 @@ const insertOrderRecord = async (connection, order) => {
       toSqlDateValue(order.updatedAt || order.lastUpdatedAt || order.date),
     ]
   );
+};
+
+const ensureOrdersReferenceIndexes = async (pool) => {
+  const [columns] = await pool.query(`SHOW COLUMNS FROM ${ORDERS_TABLE}`);
+  const columnNames = new Set((Array.isArray(columns) ? columns : []).map((column) => String(column.Field || '').toLowerCase()));
+
+  if (!columnNames.has('razorpay_order_id')) {
+    await pool.query(`ALTER TABLE ${ORDERS_TABLE} ADD COLUMN razorpay_order_id VARCHAR(64) NULL AFTER shipping_address`);
+  }
+
+  if (!columnNames.has('razorpay_payment_id')) {
+    await pool.query(`ALTER TABLE ${ORDERS_TABLE} ADD COLUMN razorpay_payment_id VARCHAR(64) NULL AFTER razorpay_order_id`);
+  }
+
+  await pool.query(
+    `
+      UPDATE ${ORDERS_TABLE}
+      SET
+        razorpay_order_id = NULLIF(COALESCE(NULLIF(razorpay_order_id, ''), JSON_UNQUOTE(JSON_EXTRACT(payment, '$.razorpayOrderId'))), ''),
+        razorpay_payment_id = NULLIF(COALESCE(NULLIF(razorpay_payment_id, ''), JSON_UNQUOTE(JSON_EXTRACT(payment, '$.razorpayPaymentId'))), '')
+      WHERE
+        razorpay_order_id IS NULL OR razorpay_order_id = '' OR
+        razorpay_payment_id IS NULL OR razorpay_payment_id = ''
+    `
+  );
+
+  const [indexes] = await pool.query(`SHOW INDEX FROM ${ORDERS_TABLE}`);
+  const indexNames = new Set((Array.isArray(indexes) ? indexes : []).map((index) => String(index.Key_name || '').toLowerCase()));
+
+  if (!indexNames.has('uniq_orders_razorpay_payment_id')) {
+    await pool.query(`CREATE UNIQUE INDEX uniq_orders_razorpay_payment_id ON ${ORDERS_TABLE} (razorpay_payment_id)`);
+  }
+
+  if (!indexNames.has('idx_orders_razorpay_order_id')) {
+    await pool.query(`CREATE INDEX idx_orders_razorpay_order_id ON ${ORDERS_TABLE} (razorpay_order_id)`);
+  }
 };
 
 const ensureOrdersStore = async () => {
@@ -518,6 +595,8 @@ const ensureOrdersStore = async () => {
         items JSON NOT NULL,
         total DECIMAL(10, 2) NOT NULL DEFAULT 0,
         shipping_address TEXT NULL,
+        razorpay_order_id VARCHAR(64) NULL,
+        razorpay_payment_id VARCHAR(64) NULL,
         payment JSON NOT NULL,
         status VARCHAR(32) NOT NULL,
         status_timeline JSON NOT NULL,
@@ -527,9 +606,13 @@ const ensureOrdersStore = async () => {
         INDEX idx_orders_phone_normalized (phone_normalized),
         INDEX idx_orders_email (email),
         INDEX idx_orders_status (status),
-        INDEX idx_orders_created_at (created_at)
+        INDEX idx_orders_created_at (created_at),
+        INDEX idx_orders_razorpay_order_id (razorpay_order_id),
+        UNIQUE KEY uniq_orders_razorpay_payment_id (razorpay_payment_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+
+    await ensureOrdersReferenceIndexes(pool);
 
     const [countRows] = await pool.query(`SELECT COUNT(*) AS total FROM ${ORDERS_TABLE}`);
     const totalOrders = Number(countRows[0]?.total || 0);
@@ -625,6 +708,7 @@ const updateStoredOrder = async (order) => {
   }
 
   const pool = getOrdersPoolOrThrow();
+  const paymentReference = getOrderPaymentReference(order);
   await pool.query(
     `
       UPDATE ${ORDERS_TABLE}
@@ -638,6 +722,8 @@ const updateStoredOrder = async (order) => {
         items = ?,
         total = ?,
         shipping_address = ?,
+        razorpay_order_id = ?,
+        razorpay_payment_id = ?,
         payment = ?,
         status = ?,
         status_timeline = ?,
@@ -655,6 +741,8 @@ const updateStoredOrder = async (order) => {
       JSON.stringify(Array.isArray(order.items) ? order.items : []),
       Number(order.total || 0),
       order.shippingAddress || '',
+      paymentReference.razorpayOrderId || null,
+      paymentReference.razorpayPaymentId || null,
       JSON.stringify(order.payment || {}),
       order.status || ORDER_STATUS.PENDING,
       JSON.stringify(Array.isArray(order.statusTimeline) ? order.statusTimeline : []),
@@ -905,7 +993,10 @@ app.post('/api/orders', async (req, res) => {
       ? items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0)
       : 0;
     const total = subtotal + SHIPPING_FEE;
-    console.log('[ORDER] Incoming order:', { customer, items, subtotal, shipping: SHIPPING_FEE, total, shippingAddress, phone, email, payment });
+
+    if (ENABLE_VERBOSE_ORDER_LOGS) {
+      console.log('[ORDER] Incoming order:', { customer, items, subtotal, shipping: SHIPPING_FEE, total, shippingAddress, phone, email, payment });
+    }
 
     if (!customer || !items || !phone) {
       console.error('[ORDER] Missing required fields');
@@ -915,7 +1006,7 @@ app.post('/api/orders', async (req, res) => {
     // Prevent duplicate orders for same payment
     const pool = getOrdersPoolOrThrow();
     const [existing] = await pool.query(
-      "SELECT * FROM orders WHERE payment->>'$.razorpayPaymentId' = ? LIMIT 1",
+      `SELECT * FROM ${ORDERS_TABLE} WHERE razorpay_payment_id = ? LIMIT 1`,
       [payment?.razorpayPaymentId || '']
     );
     if (existing && existing.length > 0) {
@@ -975,7 +1066,10 @@ app.post('/api/orders', async (req, res) => {
       await reserveProductStock(connection, items);
       await insertOrderRecord(connection, order);
       await connection.commit();
-      console.log('[ORDER] Order saved successfully:', order.id);
+
+      if (ENABLE_VERBOSE_ORDER_LOGS) {
+        console.log('[ORDER] Order saved successfully:', order.id);
+      }
     } catch (error) {
       await connection.rollback();
       console.error('[ORDER] DB transaction failed:', error);
@@ -1221,6 +1315,7 @@ app.get('/api/health', async (_req, res) => {
 
 if (hasFrontendBuild) {
   app.get(/^\/(?!api(?:\/|$)|uploads(?:\/|$)).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     res.sendFile(distIndexFile);
   });
 }
@@ -1386,6 +1481,7 @@ const startServer = async () => {
 
     await connectDB();
     await ensureProductStore();
+    await ensureOrdersStore();
     await ensureWishlistStore();
     console.log(`Database mode: MySQL SSL connected (${process.env.DB_NAME})`);
     console.log('Persistence mode: Products and orders use MySQL');

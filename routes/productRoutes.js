@@ -2,6 +2,7 @@ const express = require("express");
 const {
   addProduct,
   getProducts,
+  getProductById,
   updateProduct,
   deleteProduct,
 } = require("../controllers/productController");
@@ -17,6 +18,7 @@ const productImageUpload = uploadImage.fields([
 
 router.post("/", adminAuth, productImageUpload, addProduct);
 router.get("/", getProducts);
+router.get("/:id", getProductById);
 router.put("/:id", adminAuth, productImageUpload, updateProduct);
 router.delete("/:id", adminAuth, deleteProduct);
 

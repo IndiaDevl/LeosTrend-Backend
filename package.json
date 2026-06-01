@@ -6,6 +6,10 @@
   "scripts": {
     "build:client": "npm --prefix ../client install && npm --prefix ../client run build",
     "dev": "node server.js",
+    "loadtest": "node scripts/run-loadtest.js",
+    "loadtest:100": "node scripts/run-loadtest.js --connections 100 --duration 15",
+    "loadtest:500": "node scripts/run-loadtest.js --connections 500 --duration 20",
+    "loadtest:1000": "node scripts/run-loadtest.js --connections 1000 --duration 30",
     "render-build": "npm install && npm run build:client",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
@@ -27,9 +31,11 @@
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.41.3",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "ioredis": "^5.11.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
@@ -37,5 +43,8 @@
     "nodemailer": "^7.0.13",
     "razorpay": "^2.9.6",
     "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "autocannon": "^8.0.0"
   }
 }

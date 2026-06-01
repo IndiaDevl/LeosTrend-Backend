@@ -3,3 +3,4 @@ node_modules/
 .cache/
 password.txt
 uploads/_optimized/
+loadtest-results/

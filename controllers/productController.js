@@ -2,13 +2,27 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { getDbPool } = require("../config/db");
+const {
+  deleteFromSharedCache,
+  getJsonFromSharedCache,
+  setJsonInSharedCache,
+} = require("../lib/cache");
 
 const PRODUCTS_TABLE = "products";
 const productsDataDir = path.join(__dirname, "..", "data");
 const productsDataFile = path.join(productsDataDir, "products.fallback.json");
 const TRENDING_LIMIT = 4;
+const PRODUCT_LIST_CACHE_TTL_MS = Math.max(0, Number(process.env.PRODUCT_LIST_CACHE_TTL_MS || 15000));
+const PRODUCT_FULL_CACHE_KEY = "products:list:full:v1";
+const PRODUCT_SUMMARY_CACHE_KEY = "products:list:summary:v1";
 
 let productStoreReadyPromise = null;
+let cachedProductList = null;
+let cachedProductListExpiresAt = 0;
+let cachedProductListPromise = null;
+let cachedProductSummaryList = null;
+let cachedProductSummaryListExpiresAt = 0;
+let cachedProductSummaryListPromise = null;
 
 const hasDatabaseConnection = () => Boolean(getDbPool());
 
@@ -38,6 +52,34 @@ const loadProductsFromFile = () => {
 const saveProductsToFile = (products) => {
   ensureProductsFile();
   fs.writeFileSync(productsDataFile, JSON.stringify(products, null, 2), "utf8");
+};
+
+const invalidateProductListCache = () => {
+  cachedProductList = null;
+  cachedProductListExpiresAt = 0;
+  cachedProductListPromise = null;
+  cachedProductSummaryList = null;
+  cachedProductSummaryListExpiresAt = 0;
+  cachedProductSummaryListPromise = null;
+
+  deleteFromSharedCache([PRODUCT_FULL_CACHE_KEY, PRODUCT_SUMMARY_CACHE_KEY]).catch(() => {});
+};
+
+const readSharedProductCollection = async (cacheKey) => {
+  if (PRODUCT_LIST_CACHE_TTL_MS <= 0) {
+    return null;
+  }
+
+  const cachedValue = await getJsonFromSharedCache(cacheKey);
+  return Array.isArray(cachedValue) ? cachedValue : null;
+};
+
+const writeSharedProductCollection = (cacheKey, products) => {
+  if (PRODUCT_LIST_CACHE_TTL_MS <= 0 || !Array.isArray(products)) {
+    return;
+  }
+
+  setJsonInSharedCache(cacheKey, products, PRODUCT_LIST_CACHE_TTL_MS).catch(() => {});
 };
 
 const parseCsvField = (value) => {
@@ -408,19 +450,46 @@ const normalizeStoredProduct = (product) => {
   const mergedImages = [...new Set([safeImageUrl, ...safeGalleryImages].filter(Boolean))];
   const trendingPosition = normalizeTrendingPosition(product.trendingPosition);
 
- return {
-  id: product.id || product._id,
-  _id: product._id || product.id,
-  ...product,
-  isTrending: Boolean(product.isTrending),
-  trendingPosition,
-  imageUrl: safeImageUrl || mergedImages[0] || "",
-  image: safeImageUrl || mergedImages[0] || "",
-  images: mergedImages,
-  galleryImages: mergedImages.slice(1),
-  additionalImages: mergedImages.slice(1),
-  gallery: mergedImages.slice(1),
+  return {
+    id: product.id || product._id,
+    _id: product._id || product.id,
+    ...product,
+    isTrending: Boolean(product.isTrending),
+    trendingPosition,
+    imageUrl: safeImageUrl || mergedImages[0] || "",
+    image: safeImageUrl || mergedImages[0] || "",
+    images: mergedImages,
+    galleryImages: mergedImages.slice(1),
+    additionalImages: mergedImages.slice(1),
+    gallery: mergedImages.slice(1),
+  };
 };
+
+const summarizeProductForList = (product) => {
+  const normalizedProduct = normalizeStoredProduct(product);
+
+  return {
+    id: normalizedProduct.id,
+    _id: normalizedProduct._id,
+    name: normalizedProduct.name,
+    price: normalizedProduct.price,
+    mrp: normalizedProduct.mrp,
+    category: normalizedProduct.category,
+    sizes: Array.isArray(normalizedProduct.sizes) ? normalizedProduct.sizes : [],
+    colors: Array.isArray(normalizedProduct.colors) ? normalizedProduct.colors : [],
+    description: normalizedProduct.description,
+    stock: normalizedProduct.stock,
+    brand: normalizedProduct.brand,
+    rating: normalizedProduct.rating,
+    material: normalizedProduct.material,
+    sku: normalizedProduct.sku,
+    isTrending: normalizedProduct.isTrending,
+    trendingPosition: normalizedProduct.trendingPosition,
+    imageUrl: normalizedProduct.imageUrl,
+    image: normalizedProduct.image,
+    createdAt: normalizedProduct.createdAt,
+    updatedAt: normalizedProduct.updatedAt,
+  };
 };
 
 const seedTrendingDefaults = (products = []) => {
@@ -714,7 +783,7 @@ const ensureProductStore = async () => {
   }
 };
 
-const readProductsFromStore = async () => {
+const readProductsFromStoreUncached = async () => {
   await ensureProductStore();
 
   if (!hasDatabaseConnection()) {
@@ -724,6 +793,121 @@ const readProductsFromStore = async () => {
   const pool = getPoolOrThrow();
   const [rows] = await pool.query(`SELECT * FROM ${PRODUCTS_TABLE} ORDER BY created_at DESC`);
   return rows.map(mapRowToProduct);
+};
+
+const readProductSummariesFromStoreUncached = async () => {
+  await ensureProductStore();
+
+  if (!hasDatabaseConnection()) {
+    return sortProductsDesc(loadProductsFromFile()).map(normalizeStoredProduct).map(summarizeProductForList);
+  }
+
+  const pool = getPoolOrThrow();
+  const [rows] = await pool.query(
+    `
+      SELECT
+        id,
+        name,
+        price,
+        mrp,
+        category,
+        sizes,
+        colors,
+        description,
+        stock,
+        brand,
+        rating,
+        material,
+        sku,
+        is_trending,
+        trending_position,
+        image_url,
+        created_at,
+        updated_at
+      FROM ${PRODUCTS_TABLE}
+      ORDER BY created_at DESC
+    `
+  );
+
+  return rows.map(mapRowToProduct).map(summarizeProductForList);
+};
+
+const readProductsFromStore = async () => {
+  if (PRODUCT_LIST_CACHE_TTL_MS <= 0) {
+    return readProductsFromStoreUncached();
+  }
+
+  const now = Date.now();
+  if (Array.isArray(cachedProductList) && cachedProductListExpiresAt > now) {
+    return cachedProductList;
+  }
+
+  if (cachedProductListPromise) {
+    return cachedProductListPromise;
+  }
+
+  const sharedProducts = await readSharedProductCollection(PRODUCT_FULL_CACHE_KEY);
+  if (sharedProducts) {
+    cachedProductList = sharedProducts;
+    cachedProductListExpiresAt = Date.now() + PRODUCT_LIST_CACHE_TTL_MS;
+    return sharedProducts;
+  }
+
+  cachedProductListPromise = (async () => {
+    const products = await readProductsFromStoreUncached();
+    cachedProductList = products;
+    cachedProductListExpiresAt = Date.now() + PRODUCT_LIST_CACHE_TTL_MS;
+    writeSharedProductCollection(PRODUCT_FULL_CACHE_KEY, products);
+    return products;
+  })();
+
+  try {
+    return await cachedProductListPromise;
+  } catch (error) {
+    invalidateProductListCache();
+    throw error;
+  } finally {
+    cachedProductListPromise = null;
+  }
+};
+
+const readProductSummariesFromStore = async () => {
+  if (PRODUCT_LIST_CACHE_TTL_MS <= 0) {
+    return readProductSummariesFromStoreUncached();
+  }
+
+  const now = Date.now();
+  if (Array.isArray(cachedProductSummaryList) && cachedProductSummaryListExpiresAt > now) {
+    return cachedProductSummaryList;
+  }
+
+  if (cachedProductSummaryListPromise) {
+    return cachedProductSummaryListPromise;
+  }
+
+  const sharedProducts = await readSharedProductCollection(PRODUCT_SUMMARY_CACHE_KEY);
+  if (sharedProducts) {
+    cachedProductSummaryList = sharedProducts;
+    cachedProductSummaryListExpiresAt = Date.now() + PRODUCT_LIST_CACHE_TTL_MS;
+    return sharedProducts;
+  }
+
+  cachedProductSummaryListPromise = (async () => {
+    const products = await readProductSummariesFromStoreUncached();
+    cachedProductSummaryList = products;
+    cachedProductSummaryListExpiresAt = Date.now() + PRODUCT_LIST_CACHE_TTL_MS;
+    writeSharedProductCollection(PRODUCT_SUMMARY_CACHE_KEY, products);
+    return products;
+  })();
+
+  try {
+    return await cachedProductSummaryListPromise;
+  } catch (error) {
+    invalidateProductListCache();
+    throw error;
+  } finally {
+    cachedProductSummaryListPromise = null;
+  }
 };
 
 const findProductById = async (productId) => {
@@ -787,6 +971,7 @@ const reserveProductStockInFile = async (items) => {
   }
 
   saveProductsToFile(products);
+  invalidateProductListCache();
 };
 
 exports.addProduct = asyncHandler(async (req, res) => {
@@ -838,17 +1023,36 @@ const product = normalizeStoredProduct({
     const createdProduct =
       reconciledProducts.find((item) => String(item._id) === String(product._id)) || product;
     saveProductsToFile(reconciledProducts);
+    invalidateProductListCache();
     return res.status(201).json(createdProduct);
   }
 
   const pool = getPoolOrThrow();
   await insertProductRecord(pool, product);
   const createdProduct = await syncTrendingAssignmentsInDatabase(pool, product);
+  invalidateProductListCache();
   return res.status(201).json(createdProduct);
 });
 
-exports.getProducts = asyncHandler(async (_req, res) => {
-  return res.json(await readProductsFromStore());
+exports.getProducts = asyncHandler(async (req, res) => {
+  if (PRODUCT_LIST_CACHE_TTL_MS > 0) {
+    const maxAgeSeconds = Math.max(1, Math.floor(PRODUCT_LIST_CACHE_TTL_MS / 1000));
+    res.setHeader('Cache-Control', `public, max-age=${maxAgeSeconds}, stale-while-revalidate=${maxAgeSeconds}`);
+  }
+
+  const shouldReturnFullView = String(req.query.view || '').trim().toLowerCase() === 'full';
+  return res.json(shouldReturnFullView ? await readProductsFromStore() : await readProductSummariesFromStore());
+});
+
+exports.getProductById = asyncHandler(async (req, res) => {
+  const product = await findProductById(req.params.id);
+
+  if (!product) {
+    return res.status(404).json({ message: 'Product not found' });
+  }
+
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  return res.json(product);
 });
 
 exports.updateProduct = asyncHandler(async (req, res) => {
@@ -895,6 +1099,7 @@ exports.updateProduct = asyncHandler(async (req, res) => {
     const savedProduct =
       reconciledProducts.find((product) => String(product._id) === String(updatedProduct._id)) || updatedProduct;
     saveProductsToFile(reconciledProducts);
+    invalidateProductListCache();
     return res.json(savedProduct);
   }
 
@@ -952,6 +1157,8 @@ exports.updateProduct = asyncHandler(async (req, res) => {
     previousTrendingPosition,
   });
 
+  invalidateProductListCache();
+
   return res.json(savedProduct);
 });
 
@@ -967,6 +1174,7 @@ exports.deleteProduct = asyncHandler(async (req, res) => {
     }
 
     saveProductsToFile(nextProducts);
+    invalidateProductListCache();
     return res.json({ message: "Product deleted successfully" });
   }
 
@@ -977,6 +1185,7 @@ exports.deleteProduct = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: "Product not found" });
   }
 
+  invalidateProductListCache();
   return res.json({ message: "Product deleted successfully" });
 });
 

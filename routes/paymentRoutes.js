@@ -48,16 +48,23 @@ router.post('/razorpay-webhook', express.json({ type: '*/*' }), async (req, res)
       const db = require('../config/db');
       const pool = db.getDbPool();
       if (!pool) throw new Error('No DB pool');
-      const [rows] = await pool.query('SELECT * FROM orders WHERE payment->>\'$.razorpayOrderId\' = ?', [razorpayOrderId]);
+      const [rows] = await pool.query('SELECT id, payment FROM orders WHERE razorpay_order_id = ? LIMIT 1', [razorpayOrderId]);
       if (rows.length > 0) {
         const order = rows[0];
         // Update payment status and details
+        const existingPayment = typeof order.payment === 'string'
+          ? JSON.parse(order.payment || '{}')
+          : (order.payment || {});
         const updatedPayment = {
-          ...order.payment,
+          ...existingPayment,
           status: 'captured',
+          razorpayOrderId,
           razorpayPaymentId,
         };
-        await pool.query('UPDATE orders SET status = ?, payment = ? WHERE id = ?', ['confirmed', JSON.stringify(updatedPayment), order.id]);
+        await pool.query(
+          'UPDATE orders SET status = ?, razorpay_order_id = ?, razorpay_payment_id = ?, payment = ? WHERE id = ?',
+          ['confirmed', razorpayOrderId || null, razorpayPaymentId || null, JSON.stringify(updatedPayment), order.id]
+        );
         console.log('Order updated from webhook:', order.id);
       } else {
         console.warn('No order found for Razorpay order_id:', razorpayOrderId);
