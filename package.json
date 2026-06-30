@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "build:client": "npm --prefix ../client install && npm --prefix ../client run build",
+    "build:client": "npm --prefix ../frontend install && npm --prefix ../frontend run build",
     "dev": "node server.js",
     "loadtest": "node scripts/run-loadtest.js",
     "loadtest:100": "node scripts/run-loadtest.js --connections 100 --duration 15",
