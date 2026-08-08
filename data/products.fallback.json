@@ -1,5 +1,6 @@
 [
   {
+    "id": "579962aa-240f-4c4b-9433-25f20b4c4f50",
     "_id": "579962aa-240f-4c4b-9433-25f20b4c4f50",
     "name": "zip-sweatshirt ",
     "price": 2,
@@ -39,9 +40,14 @@
     ],
     "gallery": [
       "/uploads/products/1775230753077-809078152.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 1
   },
   {
+    "id": "f06accba-86d8-4eaf-a662-134843ce347d",
     "_id": "f06accba-86d8-4eaf-a662-134843ce347d",
     "name": "zip-sweatshirt ",
     "price": 2,
@@ -81,9 +87,14 @@
     ],
     "gallery": [
       "/uploads/products/1775230710182-415119190.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 2
   },
   {
+    "id": "34f524de-b459-471c-9f68-b10fb5362829",
     "_id": "34f524de-b459-471c-9f68-b10fb5362829",
     "name": "zip-sweatshirt ",
     "price": 2,
@@ -123,9 +134,14 @@
     ],
     "gallery": [
       "/uploads/products/1775230677170-145007595.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 3
   },
   {
+    "id": "05c19c8b-d03a-4265-9379-dafd8af20c0b",
     "_id": "05c19c8b-d03a-4265-9379-dafd8af20c0b",
     "name": "zip-sweatshirt ",
     "price": 2,
@@ -165,9 +181,14 @@
     ],
     "gallery": [
       "/uploads/products/1775230644382-837256058.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 4
   },
   {
+    "id": "0d66421d-f4c2-42b4-8bea-fd99ffef2a26",
     "_id": "0d66421d-f4c2-42b4-8bea-fd99ffef2a26",
     "name": "zip-sweatshirt ",
     "price": 2,
@@ -207,9 +228,14 @@
     ],
     "gallery": [
       "/uploads/products/1775230596287-511958791.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": false,
+    "trendingPosition": null
   },
   {
+    "id": "c82ef855-2d70-49e4-87a4-f7b822d44fd1",
     "_id": "c82ef855-2d70-49e4-87a4-f7b822d44fd1",
     "name": "hood",
     "price": 2,
@@ -249,9 +275,14 @@
     ],
     "gallery": [
       "/uploads/products/1775229354846-163726533.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 1
   },
   {
+    "id": "d94a3426-5a37-4404-b424-99c1033a3140",
     "_id": "d94a3426-5a37-4404-b424-99c1033a3140",
     "name": "hood",
     "price": 2,
@@ -291,9 +322,14 @@
     ],
     "gallery": [
       "/uploads/products/1775229290800-959206924.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 2
   },
   {
+    "id": "520d1310-1dd9-4bf6-b734-55a30d887632",
     "_id": "520d1310-1dd9-4bf6-b734-55a30d887632",
     "name": "hood",
     "price": 2,
@@ -333,9 +369,14 @@
     ],
     "gallery": [
       "/uploads/products/1775229177216-115892479.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 3
   },
   {
+    "id": "e853e19a-fed8-4672-9a10-d254fdad951e",
     "_id": "e853e19a-fed8-4672-9a10-d254fdad951e",
     "name": "cosmic swt-shirt sharp ",
     "price": 2,
@@ -375,9 +416,14 @@
     ],
     "gallery": [
       "/uploads/products/1775220833526-745805468.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 4
   },
   {
+    "id": "04e9c508-269f-4e93-9c2f-44cd9e9ef0ad",
     "_id": "04e9c508-269f-4e93-9c2f-44cd9e9ef0ad",
     "name": "cosmic swt-shirt sharp ",
     "price": 2,
@@ -417,9 +463,14 @@
     ],
     "gallery": [
       "/uploads/products/1775220176931-507630792.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 1
   },
   {
+    "id": "7329d401-6cb1-47cf-87e0-a39d861763cb",
     "_id": "7329d401-6cb1-47cf-87e0-a39d861763cb",
     "name": "cosmic swt-shirt sharp ",
     "price": 2,
@@ -459,9 +510,14 @@
     ],
     "gallery": [
       "/uploads/products/1775220076344-156016808.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 2
   },
   {
+    "id": "b4ecfd8a-9bcd-47ba-8032-39f3c4f4d500",
     "_id": "b4ecfd8a-9bcd-47ba-8032-39f3c4f4d500",
     "name": "cosmic swt-shirt sharp ",
     "price": 2,
@@ -505,9 +561,14 @@
     "gallery": [
       "http://localhost:1000/uploads/products/1775219594493-940113758.jpeg",
       "/uploads/products/1775220105643-299913115.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 3
   },
   {
+    "id": "b02cc45f-10b8-44e5-ab8d-d9becd0d17d8",
     "_id": "b02cc45f-10b8-44e5-ab8d-d9becd0d17d8",
     "name": "cosmic swt-shirt sharp ",
     "price": 2,
@@ -551,9 +612,14 @@
     "gallery": [
       "http://localhost:1000/uploads/products/1775219493341-221483452.jpeg",
       "/uploads/products/1775220128075-828557552.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 4
   },
   {
+    "id": "da09bf2a-1b8b-4b1d-ba5b-7e029b0f3419",
     "_id": "da09bf2a-1b8b-4b1d-ba5b-7e029b0f3419",
     "name": "cosmic oversized sharp ",
     "price": 2,
@@ -593,9 +659,14 @@
     ],
     "gallery": [
       "/uploads/products/1775105486149-861440956.jpeg"
-    ]
+    ],
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 1
   },
   {
+    "id": "183dc8f1-4893-4c4e-865f-67cc52448399",
     "_id": "183dc8f1-4893-4c4e-865f-67cc52448399",
     "name": "cosmic oversized sharp ",
     "price": 1,
@@ -621,9 +692,21 @@
     "sku": "",
     "image": "/uploads/1774170642853-232510215.jpeg",
     "createdAt": "2026-03-22T09:10:42.867Z",
-    "updatedAt": "2026-03-22T09:10:42.867Z"
+    "updatedAt": "2026-03-22T09:10:42.867Z",
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 2,
+    "imageUrl": "/uploads/1774170642853-232510215.jpeg",
+    "images": [
+      "/uploads/1774170642853-232510215.jpeg"
+    ],
+    "galleryImages": [],
+    "additionalImages": [],
+    "gallery": []
   },
   {
+    "id": "ff3761b3-660a-445e-81e4-cc41a9a53407",
     "_id": "ff3761b3-660a-445e-81e4-cc41a9a53407",
     "name": "cosmic oversized sharp ",
     "price": 999,
@@ -645,9 +728,21 @@
     "rating": "Bestseller",
     "image": "/uploads/1774004925158-662304775.jpeg",
     "createdAt": "2026-03-20T11:08:45.179Z",
-    "updatedAt": "2026-03-20T11:08:45.179Z"
+    "updatedAt": "2026-03-20T11:08:45.179Z",
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 3,
+    "imageUrl": "/uploads/1774004925158-662304775.jpeg",
+    "images": [
+      "/uploads/1774004925158-662304775.jpeg"
+    ],
+    "galleryImages": [],
+    "additionalImages": [],
+    "gallery": []
   },
   {
+    "id": "5b54ad31-09da-46c6-87ec-cc075ab13a4b",
     "_id": "5b54ad31-09da-46c6-87ec-cc075ab13a4b",
     "name": "cosmic oversized sharp ",
     "price": 1,
@@ -669,6 +764,17 @@
     "mrp": 899,
     "rating": "New",
     "createdAt": "2026-03-18T16:26:09.354Z",
-    "updatedAt": "2026-03-18T17:14:58.092Z"
+    "updatedAt": "2026-03-18T17:14:58.092Z",
+    "sizeStock": {},
+    "sizeChart": {},
+    "isTrending": true,
+    "trendingPosition": 4,
+    "imageUrl": "/uploads/1773851169340-18404091.jpeg",
+    "images": [
+      "/uploads/1773851169340-18404091.jpeg"
+    ],
+    "galleryImages": [],
+    "additionalImages": [],
+    "gallery": []
   }
 ]

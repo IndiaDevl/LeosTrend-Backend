@@ -84,7 +84,12 @@ const writeSharedProductCollection = (cacheKey, products) => {
 
 const parseCsvField = (value) => {
   if (!value) return [];
-  if (Array.isArray(value)) return value;
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => parseCsvField(item))
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
 
   return String(value)
     .split(",")
@@ -136,7 +141,15 @@ const normalizeImageUrlValue = (value) => {
 const parseGalleryField = (value) => {
   if (value === undefined) return undefined;
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeImageUrlValue(item)).filter(Boolean);
+    const normalizedItems = value.flatMap((item) => {
+      if (typeof item === "string" && (item.includes("[") || item.includes(",") || item.includes("\n"))) {
+        return parseGalleryField(item) || [];
+      }
+
+      return [normalizeImageUrlValue(item)];
+    });
+
+    return [...new Set(normalizedItems.filter(Boolean))];
   }
 
   const raw = String(value || "").trim();
@@ -167,25 +180,200 @@ const normalizeUploadedFile = (file) => {
   return "";
 };
 
+const normalizeSizeKey = (value) => String(value || "").trim().toUpperCase();
+
+const normalizeSizeStockMap = (value, sizes = []) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const allowedSizes = new Set(
+    (Array.isArray(sizes) ? sizes : []).map((size) => normalizeSizeKey(size)).filter(Boolean)
+  );
+  const normalized = {};
+
+  for (const [rawSize, rawQty] of Object.entries(value)) {
+    const size = normalizeSizeKey(rawSize);
+    const quantity = Math.trunc(Number(rawQty));
+
+    if (!size || !Number.isInteger(quantity) || quantity < 0) {
+      continue;
+    }
+
+    if (allowedSizes.size > 0 && !allowedSizes.has(size)) {
+      continue;
+    }
+
+    normalized[size] = quantity;
+  }
+
+  return normalized;
+};
+
+const normalizeSizeChartMap = (value, sizes = []) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const allowedSizes = new Set(
+    (Array.isArray(sizes) ? sizes : []).map((size) => normalizeSizeKey(size)).filter(Boolean)
+  );
+  const normalized = {};
+
+  for (const [rawSize, rawValue] of Object.entries(value)) {
+    const size = normalizeSizeKey(rawSize);
+    const measurement = Number(rawValue);
+
+    if (!size || !Number.isFinite(measurement) || measurement <= 0) {
+      continue;
+    }
+
+    if (allowedSizes.size > 0 && !allowedSizes.has(size)) {
+      continue;
+    }
+
+    normalized[size] = Number(measurement.toFixed(2));
+  }
+
+  return normalized;
+};
+
+const parseSizeStockField = (value, sizes = []) => {
+  if (value === undefined) return undefined;
+
+  if (Array.isArray(value)) {
+    const merged = value.reduce((accumulator, item) => {
+      const parsedItem = parseSizeStockField(item, sizes);
+      if (!parsedItem || typeof parsedItem !== "object" || Array.isArray(parsedItem)) {
+        return accumulator;
+      }
+
+      return { ...accumulator, ...parsedItem };
+    }, {});
+
+    return normalizeSizeStockMap(merged, sizes);
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return normalizeSizeStockMap(value, sizes);
+  }
+
+  const raw = String(value || "").trim();
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return normalizeSizeStockMap(parsed, sizes);
+    }
+  } catch {
+    // Fall back to "SIZE:QTY" list parsing.
+  }
+
+  const parsedMap = {};
+  raw
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((entry) => {
+      const [rawSize, rawQty] = entry.split(":");
+      const size = normalizeSizeKey(rawSize);
+      const quantity = Math.trunc(Number(rawQty));
+
+      if (!size || !Number.isInteger(quantity) || quantity < 0) {
+        return;
+      }
+
+      parsedMap[size] = quantity;
+    });
+
+  return normalizeSizeStockMap(parsedMap, sizes);
+};
+
+const parseSizeChartField = (value, sizes = []) => {
+  if (value === undefined) return undefined;
+
+  if (Array.isArray(value)) {
+    const merged = value.reduce((accumulator, item) => {
+      const parsedItem = parseSizeChartField(item, sizes);
+      if (!parsedItem || typeof parsedItem !== "object" || Array.isArray(parsedItem)) {
+        return accumulator;
+      }
+
+      return { ...accumulator, ...parsedItem };
+    }, {});
+
+    return normalizeSizeChartMap(merged, sizes);
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return normalizeSizeChartMap(value, sizes);
+  }
+
+  const raw = String(value || "").trim();
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return normalizeSizeChartMap(parsed, sizes);
+    }
+  } catch {
+    // Fall back to "SIZE:VALUE" list parsing.
+  }
+
+  const parsedMap = {};
+  raw
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((entry) => {
+      const [rawSize, rawValue] = entry.split(":");
+      const size = normalizeSizeKey(rawSize);
+      const measurement = Number(rawValue);
+
+      if (!size || !Number.isFinite(measurement) || measurement <= 0) {
+        return;
+      }
+
+      parsedMap[size] = Number(measurement.toFixed(2));
+    });
+
+  return normalizeSizeChartMap(parsedMap, sizes);
+};
+
 const normalizePayload = (body, files, { requireImage = false } = {}) => {
+  const pickLastValue = (value) => (Array.isArray(value) ? value[value.length - 1] : value);
+
   const payload = {};
 
-  if (body.name !== undefined) payload.name = body.name;
-  if (body.price !== undefined) payload.price = Number(body.price);
-  if (body.mrp !== undefined && body.mrp !== "") payload.mrp = Number(body.mrp);
-  if (body.category !== undefined) payload.category = body.category;
+  if (body.name !== undefined) payload.name = pickLastValue(body.name);
+  if (body.price !== undefined) payload.price = Number(pickLastValue(body.price));
+  if (body.mrp !== undefined && pickLastValue(body.mrp) !== "") payload.mrp = Number(pickLastValue(body.mrp));
+  if (body.category !== undefined) payload.category = pickLastValue(body.category);
   if (body.sizes !== undefined) payload.sizes = parseCsvField(body.sizes);
   if (body.colors !== undefined) payload.colors = parseCsvField(body.colors);
-  if (body.description !== undefined) payload.description = body.description;
-  if (body.stock !== undefined) payload.stock = Number(body.stock);
-  if (body.brand !== undefined) payload.brand = body.brand;
-  if (body.rating !== undefined) payload.rating = body.rating;
-  if (body.material !== undefined) payload.material = body.material;
-  if (body.fit !== undefined) payload.fit = body.fit;
-  if (body.careInstructions !== undefined) payload.careInstructions = body.careInstructions;
-  if (body.sku !== undefined) payload.sku = body.sku;
-  if (body.isTrending !== undefined) payload.isTrending = body.isTrending === true || body.isTrending === "true" || body.isTrending === "1" || body.isTrending === 1;
-  if (body.trendingPosition !== undefined) payload.trendingPosition = normalizeTrendingPosition(body.trendingPosition);
+  if (body.description !== undefined) payload.description = pickLastValue(body.description);
+  if (body.stock !== undefined) payload.stock = Number(pickLastValue(body.stock));
+  if (body.sizeStock !== undefined) payload.sizeStock = parseSizeStockField(body.sizeStock, payload.sizes);
+  if (body.sizeChart !== undefined) payload.sizeChart = parseSizeChartField(body.sizeChart, payload.sizes);
+  if (body.brand !== undefined) payload.brand = pickLastValue(body.brand);
+  if (body.rating !== undefined) payload.rating = pickLastValue(body.rating);
+  if (body.material !== undefined) payload.material = pickLastValue(body.material);
+  if (body.fit !== undefined) payload.fit = pickLastValue(body.fit);
+  if (body.careInstructions !== undefined) payload.careInstructions = pickLastValue(body.careInstructions);
+  if (body.sku !== undefined) payload.sku = pickLastValue(body.sku);
+  if (body.isTrending !== undefined) {
+    const isTrendingValue = pickLastValue(body.isTrending);
+    payload.isTrending =
+      isTrendingValue === true ||
+      isTrendingValue === "true" ||
+      isTrendingValue === "1" ||
+      isTrendingValue === 1;
+  }
+  if (body.trendingPosition !== undefined) {
+    payload.trendingPosition = normalizeTrendingPosition(pickLastValue(body.trendingPosition));
+  }
 
   const primaryFile = files?.image?.[0];
   const galleryFiles = Array.isArray(files?.galleryImages) ? files.galleryImages : [];
@@ -193,9 +381,9 @@ const normalizePayload = (body, files, { requireImage = false } = {}) => {
   if (primaryFile?.path || primaryFile?.filename) {
     payload.imageUrl = normalizeUploadedFile(primaryFile);
   } else if (body.imageUrl) {
-    payload.imageUrl = normalizeImageUrlValue(body.imageUrl);
+    payload.imageUrl = normalizeImageUrlValue(pickLastValue(body.imageUrl));
   } else if (body.image) {
-    payload.imageUrl = normalizeImageUrlValue(body.image);
+    payload.imageUrl = normalizeImageUrlValue(pickLastValue(body.image));
   }
 
   const galleryFromBody = parseGalleryField(body.galleryImages);
@@ -449,11 +637,25 @@ const normalizeStoredProduct = (product) => {
   )];
   const mergedImages = [...new Set([safeImageUrl, ...safeGalleryImages].filter(Boolean))];
   const trendingPosition = normalizeTrendingPosition(product.trendingPosition);
+  const normalizedSizes = Array.isArray(product.sizes) ? product.sizes : [];
+  const sizeStock = normalizeSizeStockMap(product.sizeStock || product.size_stock, normalizedSizes);
+  const sizeChart = normalizeSizeChartMap(product.sizeChart || product.size_chart, normalizedSizes);
+  const hasSizeStockMap = Object.keys(sizeStock).length > 0;
+  const sizeStockTotal = Object.values(sizeStock).reduce((sum, qty) => sum + Number(qty || 0), 0);
+  const normalizedStock = hasSizeStockMap ? sizeStockTotal : Number(product.stock || 0);
 
   return {
     id: product.id || product._id,
     _id: product._id || product.id,
     ...product,
+    sizes: normalizedSizes,
+    sizeStock,
+    sizeChart,
+    stock: Math.max(0, Math.trunc(Number(normalizedStock) || 0)),
+    reviewCount: Math.max(0, Math.trunc(Number(product.reviewCount ?? product.review_count ?? 0) || 0)),
+    averageRating: Number.isFinite(Number(product.averageRating ?? product.average_rating))
+      ? Number(Number(product.averageRating ?? product.average_rating).toFixed(2))
+      : 0,
     isTrending: Boolean(product.isTrending),
     trendingPosition,
     imageUrl: safeImageUrl || mergedImages[0] || "",
@@ -476,11 +678,15 @@ const summarizeProductForList = (product) => {
     mrp: normalizedProduct.mrp,
     category: normalizedProduct.category,
     sizes: Array.isArray(normalizedProduct.sizes) ? normalizedProduct.sizes : [],
+    sizeStock: normalizedProduct.sizeStock || {},
+    sizeChart: normalizedProduct.sizeChart || {},
     colors: Array.isArray(normalizedProduct.colors) ? normalizedProduct.colors : [],
     description: normalizedProduct.description,
     stock: normalizedProduct.stock,
     brand: normalizedProduct.brand,
     rating: normalizedProduct.rating,
+    reviewCount: normalizedProduct.reviewCount,
+    averageRating: normalizedProduct.averageRating,
     material: normalizedProduct.material,
     sku: normalizedProduct.sku,
     isTrending: normalizedProduct.isTrending,
@@ -551,6 +757,18 @@ const parseJsonArray = (value) => {
   }
 };
 
+const parseJsonObject = (value) => {
+  if (!value) return {};
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 const toIsoString = (value) => {
   if (!value) return null;
 
@@ -566,11 +784,15 @@ const mapRowToProduct = (row) => {
     mrp: row.mrp === null ? null : Number(row.mrp),
     category: row.category,
     sizes: parseJsonArray(row.sizes),
+    sizeStock: parseJsonObject(row.size_stock),
+    sizeChart: parseJsonObject(row.size_chart),
     colors: parseJsonArray(row.colors),
     description: row.description,
     stock: row.stock === null ? 0 : Number(row.stock),
     brand: row.brand,
     rating: row.rating,
+    reviewCount: row.review_count,
+    averageRating: row.average_rating,
     material: row.material,
     fit: row.fit,
     careInstructions: row.care_instructions,
@@ -594,11 +816,15 @@ const insertProductRecord = async (connection, product) => {
         mrp,
         category,
         sizes,
+        size_stock,
+        size_chart,
         colors,
         description,
         stock,
         brand,
         rating,
+        review_count,
+        average_rating,
         material,
         fit,
         care_instructions,
@@ -610,7 +836,7 @@ const insertProductRecord = async (connection, product) => {
         created_at,
         updated_at
       )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       product._id,
@@ -619,11 +845,15 @@ const insertProductRecord = async (connection, product) => {
       product.mrp === undefined || product.mrp === null || product.mrp === "" ? null : Number(product.mrp),
       product.category || "",
       JSON.stringify(Array.isArray(product.sizes) ? product.sizes : []),
+      JSON.stringify(product.sizeStock || {}),
+      JSON.stringify(product.sizeChart || {}),
       JSON.stringify(Array.isArray(product.colors) ? product.colors : []),
       product.description || "",
       Number(product.stock || 0),
       product.brand || "",
       product.rating || "",
+      Math.max(0, Math.trunc(Number(product.reviewCount || 0) || 0)),
+      Number(Number(product.averageRating || 0).toFixed(2)),
       product.material || "",
       product.fit || "",
       product.careInstructions || "",
@@ -663,11 +893,15 @@ const ensureProductStore = async () => {
         mrp DECIMAL(10, 2) NULL,
         category VARCHAR(120) NOT NULL,
         sizes JSON NOT NULL,
+        size_stock JSON NULL,
+        size_chart JSON NULL,
         colors JSON NOT NULL,
         description TEXT NULL,
         stock INT NOT NULL DEFAULT 0,
         brand VARCHAR(120) NULL,
         rating VARCHAR(64) NULL,
+        review_count INT NOT NULL DEFAULT 0,
+        average_rating DECIMAL(3, 2) NOT NULL DEFAULT 0,
         material VARCHAR(255) NULL,
         fit VARCHAR(120) NULL,
         care_instructions TEXT NULL,
@@ -689,6 +923,22 @@ const ensureProductStore = async () => {
       `);
     }
 
+    const [sizeStockColumns] = await pool.query(`SHOW COLUMNS FROM ${PRODUCTS_TABLE} LIKE 'size_stock'`);
+    if (!Array.isArray(sizeStockColumns) || sizeStockColumns.length === 0) {
+      await pool.query(`
+        ALTER TABLE ${PRODUCTS_TABLE}
+        ADD COLUMN size_stock JSON NULL AFTER sizes
+      `);
+    }
+
+    const [sizeChartColumns] = await pool.query(`SHOW COLUMNS FROM ${PRODUCTS_TABLE} LIKE 'size_chart'`);
+    if (!Array.isArray(sizeChartColumns) || sizeChartColumns.length === 0) {
+      await pool.query(`
+        ALTER TABLE ${PRODUCTS_TABLE}
+        ADD COLUMN size_chart JSON NULL AFTER size_stock
+      `);
+    }
+
     const [trendingColumns] = await pool.query(`SHOW COLUMNS FROM ${PRODUCTS_TABLE} LIKE 'is_trending'`);
     if (!Array.isArray(trendingColumns) || trendingColumns.length === 0) {
       await pool.query(`
@@ -702,6 +952,22 @@ const ensureProductStore = async () => {
       await pool.query(`
         ALTER TABLE ${PRODUCTS_TABLE}
         ADD COLUMN trending_position TINYINT NULL AFTER is_trending
+      `);
+    }
+
+    const [reviewCountColumns] = await pool.query(`SHOW COLUMNS FROM ${PRODUCTS_TABLE} LIKE 'review_count'`);
+    if (!Array.isArray(reviewCountColumns) || reviewCountColumns.length === 0) {
+      await pool.query(`
+        ALTER TABLE ${PRODUCTS_TABLE}
+        ADD COLUMN review_count INT NOT NULL DEFAULT 0 AFTER rating
+      `);
+    }
+
+    const [averageRatingColumns] = await pool.query(`SHOW COLUMNS FROM ${PRODUCTS_TABLE} LIKE 'average_rating'`);
+    if (!Array.isArray(averageRatingColumns) || averageRatingColumns.length === 0) {
+      await pool.query(`
+        ALTER TABLE ${PRODUCTS_TABLE}
+        ADD COLUMN average_rating DECIMAL(3, 2) NOT NULL DEFAULT 0 AFTER review_count
       `);
     }
 
@@ -812,11 +1078,15 @@ const readProductSummariesFromStoreUncached = async () => {
         mrp,
         category,
         sizes,
+        size_stock,
+        size_chart,
         colors,
         description,
         stock,
         brand,
         rating,
+        review_count,
+        average_rating,
         material,
         sku,
         is_trending,
@@ -926,6 +1196,49 @@ const findProductById = async (productId) => {
   return rows[0] ? mapRowToProduct(rows[0]) : null;
 };
 
+const updateProductReviewStats = async (productId, reviewStats = {}) => {
+  const normalizedId = String(productId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+
+  const reviewCount = Math.max(0, Math.trunc(Number(reviewStats.reviewCount || 0) || 0));
+  const averageRatingRaw = Number(reviewStats.averageRating || 0);
+  const averageRating = Number.isFinite(averageRatingRaw)
+    ? Number(Math.max(0, Math.min(5, averageRatingRaw)).toFixed(2))
+    : 0;
+
+  await ensureProductStore();
+
+  if (!hasDatabaseConnection()) {
+    const products = loadProductsFromFile().map(normalizeStoredProduct);
+    const nextProducts = products.map((product) => {
+      if (String(product._id) !== normalizedId) {
+        return product;
+      }
+
+      return {
+        ...product,
+        reviewCount,
+        averageRating,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    saveProductsToFile(nextProducts);
+    invalidateProductListCache();
+    return nextProducts.find((product) => String(product._id) === normalizedId) || null;
+  }
+
+  const pool = getPoolOrThrow();
+  await pool.query(
+    `UPDATE ${PRODUCTS_TABLE} SET review_count = ?, average_rating = ?, updated_at = ? WHERE id = ?`,
+    [reviewCount, averageRating, new Date().toISOString(), normalizedId]
+  );
+  invalidateProductListCache();
+  return findProductById(normalizedId);
+};
+
 const reserveProductStockInFile = async (items) => {
   const products = loadProductsFromFile().map(normalizeStoredProduct);
   const productMap = new Map(products.map((product) => [String(product._id), product]));
@@ -953,7 +1266,11 @@ const reserveProductStockInFile = async (items) => {
       throw error;
     }
 
-    const availableStock = Number(product.stock || 0);
+    const selectedSize = normalizeSizeKey(item?.size || "M");
+    const hasSizeStock = product.sizeStock && Object.keys(product.sizeStock).length > 0;
+    const availableStock = hasSizeStock
+      ? Number(product.sizeStock[selectedSize] || 0)
+      : Number(product.stock || 0);
     if (availableStock <= 0) {
       const error = new Error(`${product.name || item.name} is out of stock`);
       error.statusCode = 409;
@@ -966,7 +1283,12 @@ const reserveProductStockInFile = async (items) => {
       throw error;
     }
 
-    product.stock = availableStock - quantity;
+    if (hasSizeStock) {
+      product.sizeStock[selectedSize] = availableStock - quantity;
+      product.stock = Object.values(product.sizeStock).reduce((sum, qty) => sum + Number(qty || 0), 0);
+    } else {
+      product.stock = availableStock - quantity;
+    }
     product.updatedAt = new Date().toISOString();
   }
 
@@ -1010,6 +1332,8 @@ const product = normalizeStoredProduct({
   ...payload,
   trendingPosition: payload.isTrending ? normalizeTrendingPosition(payload.trendingPosition) : null,
   image: payload.imageUrl,
+  reviewCount: 0,
+  averageRating: 0,
   createdAt: timestamp,
   updatedAt: timestamp,
 });
@@ -1051,7 +1375,7 @@ exports.getProductById = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Product not found' });
   }
 
-  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  res.setHeader('Cache-Control', 'no-store');
   return res.json(product);
 });
 
@@ -1113,11 +1437,15 @@ exports.updateProduct = asyncHandler(async (req, res) => {
         mrp = ?,
         category = ?,
         sizes = ?,
+        size_stock = ?,
+        size_chart = ?,
         colors = ?,
         description = ?,
         stock = ?,
         brand = ?,
         rating = ?,
+        review_count = ?,
+        average_rating = ?,
         material = ?,
         fit = ?,
         care_instructions = ?,
@@ -1135,11 +1463,15 @@ exports.updateProduct = asyncHandler(async (req, res) => {
       updatedProduct.mrp === undefined || updatedProduct.mrp === null || updatedProduct.mrp === "" ? null : Number(updatedProduct.mrp),
       updatedProduct.category || "",
       JSON.stringify(Array.isArray(updatedProduct.sizes) ? updatedProduct.sizes : []),
+      JSON.stringify(updatedProduct.sizeStock || {}),
+      JSON.stringify(updatedProduct.sizeChart || {}),
       JSON.stringify(Array.isArray(updatedProduct.colors) ? updatedProduct.colors : []),
       updatedProduct.description || "",
       Number(updatedProduct.stock || 0),
       updatedProduct.brand || "",
       updatedProduct.rating || "",
+      Math.max(0, Math.trunc(Number(updatedProduct.reviewCount || 0) || 0)),
+      Number(Number(updatedProduct.averageRating || 0).toFixed(2)),
       updatedProduct.material || "",
       updatedProduct.fit || "",
       updatedProduct.careInstructions || "",
@@ -1192,3 +1524,5 @@ exports.deleteProduct = asyncHandler(async (req, res) => {
 exports.ensureProductStore = ensureProductStore;
 exports.findProductById = findProductById;
 exports.reserveProductStockInFile = reserveProductStockInFile;
+exports.invalidateProductListCache = invalidateProductListCache;
+exports.updateProductReviewStats = updateProductReviewStats;

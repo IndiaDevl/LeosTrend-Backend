@@ -17,9 +17,10 @@ const crypto = require('crypto');
 const { getRazorpayClient, isRazorpayConfigured } = require('./lib/razorpay');
 const { getOptimizedLocalImage, sanitizeRelativeUploadPath } = require('./lib/localImageOptimizer');
 const { connectDB, getDbPool, getMissingDbEnvVars } = require('./config/db');
-const { ensureProductStore, reserveProductStockInFile } = require('./controllers/productController');
+const { ensureProductStore, reserveProductStockInFile, invalidateProductListCache } = require('./controllers/productController');
 const productRoutes = require('./routes/productRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 const nodemailer = require('nodemailer');
 // const emailOtpRoutesModule = require('./routes/emailOtpRoutes'); // Removed: no longer used
 // const emailOtpRoutes = emailOtpRoutesModule.router;
@@ -216,6 +217,42 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const ensureOrdersFile = () => {
+  if (!fs.existsSync(ordersDataDir)) {
+    fs.mkdirSync(ordersDataDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(ordersDataFile)) {
+    fs.writeFileSync(ordersDataFile, '[]', 'utf8');
+  }
+};
+
+const loadOrdersFromFile = () => {
+  ensureOrdersFile();
+
+  try {
+    const raw = fs.readFileSync(ordersDataFile, 'utf8');
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Failed to read orders fallback store:', error.message);
+    return [];
+  }
+};
+
+const saveOrdersToFile = (orders) => {
+  ensureOrdersFile();
+  fs.writeFileSync(ordersDataFile, JSON.stringify(orders, null, 2), 'utf8');
+};
+
+const sortOrdersDesc = (orders) => {
+  return [...(Array.isArray(orders) ? orders : [])].sort((left, right) => {
+    const leftTime = new Date(left?.updatedAt || left?.createdAt || left?.date || 0).getTime();
+    const rightTime = new Date(right?.updatedAt || right?.createdAt || right?.date || 0).getTime();
+    return rightTime - leftTime;
+  });
+};
+
 const uploadStaticOptions = {
   etag: true,
   lastModified: true,
@@ -263,6 +300,7 @@ app.use('/uploads', express.static(uploadsDir, uploadStaticOptions));
 app.use('/api/products', productRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api', reviewRoutes);
 // app.use('/api/email-otp', emailOtpRoutes); // Removed: no longer used
 
 
@@ -387,6 +425,27 @@ const createHttpError = (message, statusCode = 500) => {
   return error;
 };
 
+const normalizeSizeKey = (value) => String(value || '').trim().toUpperCase();
+
+const parseSizeStockMap = (value) => {
+  const parsed = parseOrderJson(value, {});
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {};
+  }
+
+  const map = {};
+  for (const [rawSize, rawQty] of Object.entries(parsed)) {
+    const size = normalizeSizeKey(rawSize);
+    const quantity = Math.trunc(Number(rawQty));
+    if (!size || !Number.isInteger(quantity) || quantity < 0) {
+      continue;
+    }
+    map[size] = quantity;
+  }
+
+  return map;
+};
+
 const normalizeOrderItemsForStock = (items) => {
   if (!Array.isArray(items) || items.length === 0) {
     throw createHttpError('Order must include at least one item', 400);
@@ -396,6 +455,7 @@ const normalizeOrderItemsForStock = (items) => {
 
   for (const item of items) {
     const productId = String(item?.id || item?._id || '').trim();
+    const size = normalizeSizeKey(item?.size || 'M');
     const quantity = Math.trunc(Number(item?.quantity || 0));
 
     if (!productId) {
@@ -406,9 +466,11 @@ const normalizeOrderItemsForStock = (items) => {
       throw createHttpError(`Invalid quantity for product ${productId}`, 400);
     }
 
-    const existingItem = aggregatedItems.get(productId);
-    aggregatedItems.set(productId, {
+    const aggregateKey = `${productId}::${size}`;
+    const existingItem = aggregatedItems.get(aggregateKey);
+    aggregatedItems.set(aggregateKey, {
       productId,
+      size,
       name: String(item?.name || existingItem?.name || 'Product').trim() || 'Product',
       quantity: (existingItem?.quantity || 0) + quantity,
     });
@@ -419,11 +481,11 @@ const normalizeOrderItemsForStock = (items) => {
 
 const reserveProductStock = async (connection, items) => {
   const normalizedItems = normalizeOrderItemsForStock(items);
-  const productIds = normalizedItems.map((item) => item.productId);
+  const productIds = [...new Set(normalizedItems.map((item) => item.productId))];
   const placeholders = productIds.map(() => '?').join(', ');
 
   const [rows] = await connection.query(
-    `SELECT id, name, stock FROM ${PRODUCTS_TABLE} WHERE id IN (${placeholders}) FOR UPDATE`,
+    `SELECT id, name, stock, size_stock FROM ${PRODUCTS_TABLE} WHERE id IN (${placeholders}) FOR UPDATE`,
     productIds
   );
 
@@ -436,14 +498,36 @@ const reserveProductStock = async (connection, items) => {
       throw createHttpError(`${item.name} is no longer available`, 404);
     }
 
-    const availableStock = Number(productRow.stock || 0);
+    const sizeStock = parseSizeStockMap(productRow.size_stock);
+    const hasSizeStock = Object.keys(sizeStock).length > 0;
+    const availableStock = hasSizeStock
+      ? Number(sizeStock[item.size] || 0)
+      : Number(productRow.stock || 0);
 
     if (availableStock <= 0) {
       throw createHttpError(`${productRow.name || item.name} is out of stock`, 409);
     }
 
     if (availableStock < item.quantity) {
-      throw createHttpError(`Only ${availableStock} left for ${productRow.name || item.name}`, 409);
+      throw createHttpError(`Only ${availableStock} left for ${productRow.name || item.name} (${item.size})`, 409);
+    }
+
+    if (hasSizeStock) {
+      sizeStock[item.size] = availableStock - item.quantity;
+      const remainingStock = Object.values(sizeStock).reduce((sum, qty) => sum + Number(qty || 0), 0);
+
+      const [updateResult] = await connection.query(
+        `UPDATE ${PRODUCTS_TABLE} SET stock = ?, size_stock = ? WHERE id = ?`,
+        [remainingStock, JSON.stringify(sizeStock), item.productId]
+      );
+
+      if (!updateResult?.affectedRows) {
+        throw createHttpError(`${productRow.name || item.name} does not have enough stock`, 409);
+      }
+
+      productRow.stock = remainingStock;
+      productRow.size_stock = sizeStock;
+      continue;
     }
 
     const [updateResult] = await connection.query(
@@ -693,6 +777,33 @@ const fetchOrdersForCustomer = async ({ phone, email }) => {
   );
 
   return rows.map(mapRowToOrder);
+};
+
+const findExistingOrderByRazorpayPaymentId = async (razorpayPaymentId) => {
+  await ensureOrdersStore();
+
+  const normalizedPaymentId = String(razorpayPaymentId || '').trim();
+  if (!normalizedPaymentId) {
+    return null;
+  }
+
+  if (!hasDatabaseConnection()) {
+    const orders = loadOrdersFromFile();
+    return (
+      orders.find((order) => {
+        const paymentReference = getOrderPaymentReference(order);
+        return paymentReference.razorpayPaymentId === normalizedPaymentId;
+      }) || null
+    );
+  }
+
+  const pool = getOrdersPoolOrThrow();
+  const [rows] = await pool.query(
+    `SELECT * FROM ${ORDERS_TABLE} WHERE razorpay_payment_id = ? LIMIT 1`,
+    [normalizedPaymentId]
+  );
+
+  return rows[0] ? mapRowToOrder(rows[0]) : null;
 };
 
 const updateStoredOrder = async (order) => {
@@ -1003,19 +1114,15 @@ app.post('/api/orders', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Prevent duplicate orders for same payment
-    const pool = getOrdersPoolOrThrow();
-    const [existing] = await pool.query(
-      `SELECT * FROM ${ORDERS_TABLE} WHERE razorpay_payment_id = ? LIMIT 1`,
-      [payment?.razorpayPaymentId || '']
-    );
-    if (existing && existing.length > 0) {
-      console.warn('[ORDER] Duplicate payment detected, returning existing order:', existing[0].id);
+    // Prevent duplicate orders for same payment in both DB and fallback mode.
+    const existingOrder = await findExistingOrderByRazorpayPaymentId(payment?.razorpayPaymentId);
+    if (existingOrder) {
+      console.warn('[ORDER] Duplicate payment detected, returning existing order:', existingOrder.id);
       return res.status(200).json({
         success: true,
-        orderId: existing[0].id,
-        orderNumber: existing[0].order_number,
-        order: existing[0],
+        orderId: existingOrder.id,
+        orderNumber: existingOrder.orderNumber,
+        order: existingOrder,
         message: 'Order already exists for this payment.'
       });
     }
@@ -1059,23 +1166,36 @@ app.post('/api/orders', async (req, res) => {
 
     await ensureProductStore();
     await ensureOrdersStore();
-    const connection = await pool.getConnection();
+    if (hasDatabaseConnection()) {
+      const pool = getOrdersPoolOrThrow();
+      const connection = await pool.getConnection();
 
-    try {
-      await connection.beginTransaction();
-      await reserveProductStock(connection, items);
-      await insertOrderRecord(connection, order);
-      await connection.commit();
+      try {
+        await connection.beginTransaction();
+        await reserveProductStock(connection, items);
+        await insertOrderRecord(connection, order);
+        await connection.commit();
+        invalidateProductListCache();
+
+        if (ENABLE_VERBOSE_ORDER_LOGS) {
+          console.log('[ORDER] Order saved successfully:', order.id);
+        }
+      } catch (error) {
+        await connection.rollback();
+        console.error('[ORDER] DB transaction failed:', error);
+        throw error;
+      } finally {
+        connection.release();
+      }
+    } else {
+      await reserveProductStockInFile(items);
+      const orders = loadOrdersFromFile();
+      orders.push(order);
+      saveOrdersToFile(orders);
 
       if (ENABLE_VERBOSE_ORDER_LOGS) {
-        console.log('[ORDER] Order saved successfully:', order.id);
+        console.log('[ORDER] Order saved in fallback file store:', order.id);
       }
-    } catch (error) {
-      await connection.rollback();
-      console.error('[ORDER] DB transaction failed:', error);
-      throw error;
-    } finally {
-      connection.release();
     }
 
 
@@ -1274,15 +1394,15 @@ app.get('/api/health', async (_req, res) => {
     const adminConfigured = getAdminConfigStatus().configured;
 
     if (!pool) {
-      return res.status(503).json({
-        ok: false,
+      return res.json({
+        ok: true,
         dbConnected: false,
         dbProvider: 'mysql',
-        productPersistence: 'mysql',
-        orderPersistence: 'mysql',
+        productPersistence: 'fallback-file',
+        orderPersistence: 'fallback-file',
         adminConfigured,
         razorpayConfigured,
-        message: 'MySQL pool is not initialized',
+        message: 'MySQL unavailable; running in fallback file-store mode',
       });
     }
 
@@ -1300,15 +1420,15 @@ app.get('/api/health', async (_req, res) => {
       razorpayConfigured,
     });
   } catch (error) {
-    return res.status(503).json({
-      ok: false,
+    return res.json({
+      ok: true,
       dbConnected: false,
       dbProvider: 'mysql',
-      productPersistence: 'mysql',
-      orderPersistence: 'mysql',
+      productPersistence: 'fallback-file',
+      orderPersistence: 'fallback-file',
       adminConfigured: getAdminConfigStatus().configured,
       razorpayConfigured: isRazorpayConfigured(),
-      message: error.message,
+      message: `MySQL unavailable; running in fallback file-store mode (${error.message})`,
     });
   }
 });
@@ -1470,21 +1590,34 @@ const sendOrderConfirmationEmail = async (order) => {
 const PORT = process.env.PORT || 1000;
 const startServer = async () => {
   try {
-    const missingDbEnvVars = getMissingDbEnvVars();
+    let databaseReady = false;
 
-    if (missingDbEnvVars.length > 0) {
-      throw new Error(
-        `Missing required database environment variables: ${missingDbEnvVars.join(', ')}. ` +
-          'Set them in Render Dashboard -> Environment before starting the service.'
-      );
+    try {
+      const missingDbEnvVars = getMissingDbEnvVars();
+
+      if (missingDbEnvVars.length > 0) {
+        console.warn(
+          `Database environment variables are incomplete: ${missingDbEnvVars.join(', ')}. ` +
+            'Starting in fallback file-store mode.'
+        );
+      } else {
+        await connectDB();
+        databaseReady = true;
+      }
+    } catch (error) {
+      console.warn(`MySQL unavailable at startup (${error.message}). Starting in fallback file-store mode.`);
     }
 
-    await connectDB();
     await ensureProductStore();
     await ensureOrdersStore();
     await ensureWishlistStore();
-    console.log(`Database mode: MySQL SSL connected (${process.env.DB_NAME})`);
-    console.log('Persistence mode: Products and orders use MySQL');
+    if (databaseReady) {
+      console.log(`Database mode: MySQL SSL connected (${process.env.DB_NAME})`);
+      console.log('Persistence mode: Products, orders, and wishlist use MySQL');
+    } else {
+      console.log('Database mode: unavailable at startup');
+      console.log('Persistence mode: using fallback file stores for products, orders, and wishlist');
+    }
     console.log('Image mode: Cloudinary URL storage (no image binaries in database)');
 
     app.listen(PORT, () => {
