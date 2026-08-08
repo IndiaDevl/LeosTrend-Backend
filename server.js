@@ -253,6 +253,90 @@ const sortOrdersDesc = (orders) => {
   });
 };
 
+// ── BOGO OFFER STORE ─────────────────────────────────────────────────
+const BOGO_TABLE = 'bogo_offer';
+const bogoDataFile = path.join(ordersDataDir, 'bogo_offer.fallback.json');
+
+const defaultBogoOffer = () => ({
+  is_active: 0,
+  title: 'Buy 1 Get 1 Free',
+  subtitle: 'Limited time offer — grab your favourites now!',
+  end_time: null,
+  updated_at: new Date().toISOString(),
+});
+
+const loadBogoFromFile = () => {
+  if (!fs.existsSync(bogoDataFile)) return defaultBogoOffer();
+  try {
+    const raw = fs.readFileSync(bogoDataFile, 'utf8');
+    return { ...defaultBogoOffer(), ...JSON.parse(raw || '{}') };
+  } catch {
+    return defaultBogoOffer();
+  }
+};
+
+const saveBogoToFile = (data) => {
+  if (!fs.existsSync(ordersDataDir)) fs.mkdirSync(ordersDataDir, { recursive: true });
+  fs.writeFileSync(bogoDataFile, JSON.stringify(data, null, 2), 'utf8');
+};
+
+const ensureBogoStore = async () => {
+  if (!hasDatabaseConnection()) return;
+  const pool = getDbPool();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${BOGO_TABLE} (
+      id TINYINT NOT NULL DEFAULT 1,
+      is_active TINYINT(1) NOT NULL DEFAULT 0,
+      title VARCHAR(255) NOT NULL DEFAULT 'Buy 1 Get 1 Free',
+      subtitle VARCHAR(500) NULL,
+      end_time DATETIME NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`INSERT IGNORE INTO ${BOGO_TABLE} (id) VALUES (1)`);
+};
+
+const getBogoOffer = async () => {
+  if (!hasDatabaseConnection()) return loadBogoFromFile();
+  const pool = getDbPool();
+  const [rows] = await pool.query(`SELECT * FROM ${BOGO_TABLE} WHERE id = 1`);
+  if (!rows[0]) return defaultBogoOffer();
+  const row = rows[0];
+  return {
+    is_active: Number(row.is_active),
+    title: row.title,
+    subtitle: row.subtitle || null,
+    end_time: row.end_time ? new Date(row.end_time).toISOString() : null,
+    updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+  };
+};
+
+const updateBogoOffer = async ({ is_active, title, subtitle, end_time }) => {
+  const safeTitle = String(title || 'Buy 1 Get 1 Free').trim();
+  const safeSubtitle = String(subtitle || '').trim() || null;
+  const safeEndTime = end_time ? new Date(end_time) : null;
+  const safeActive = is_active ? 1 : 0;
+
+  if (!hasDatabaseConnection()) {
+    const updated = {
+      is_active: safeActive,
+      title: safeTitle,
+      subtitle: safeSubtitle,
+      end_time: safeEndTime ? safeEndTime.toISOString() : null,
+      updated_at: new Date().toISOString(),
+    };
+    saveBogoToFile(updated);
+    return updated;
+  }
+  const pool = getDbPool();
+  await pool.query(
+    `UPDATE ${BOGO_TABLE} SET is_active = ?, title = ?, subtitle = ?, end_time = ? WHERE id = 1`,
+    [safeActive, safeTitle, safeSubtitle, safeEndTime]
+  );
+  return getBogoOffer();
+};
+
 const uploadStaticOptions = {
   etag: true,
   lastModified: true,
@@ -925,32 +1009,125 @@ const getAdminStatsRangeConfig = (rawRange) => {
   }
 };
 
+const getBogoOfferStatus = async () => {
+  try {
+    const offer = await getBogoOffer();
+    const endTime = offer?.end_time ? new Date(offer.end_time).getTime() : 0;
+    const isExpired = Boolean(endTime && endTime < Date.now());
+    return Boolean(offer?.is_active) && !isExpired;
+  } catch {
+    return false;
+  }
+};
+
+const calculateShippingFee = (items = []) => {
+  const itemCount = (Array.isArray(items) ? items : []).reduce((total, item) => {
+    return total + Math.max(1, Math.trunc(Number(item?.quantity) || 1));
+  }, 0);
+
+  if (itemCount <= 1) return 0;
+  return 50;
+};
+
+const calculateOrderPricing = (items = [], isBogoActive = false) => {
+  const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => ({
+    index,
+    name: String(item?.name || 'Product').trim() || 'Product',
+    price: Number(item?.price || 0),
+    quantity: Math.max(1, Math.trunc(Number(item?.quantity) || 1)),
+    size: item?.size || 'M',
+    color: item?.color || '',
+    image: item?.image || '',
+    id: item?.id,
+    _id: item?._id,
+  }));
+
+  const summary = normalizedItems.reduce((accumulator, item) => {
+    accumulator.originalSubtotal += item.price * item.quantity;
+    return accumulator;
+  }, { subtotal: 0, originalSubtotal: 0, savings: 0, items: [] });
+
+  if (!isBogoActive) {
+    summary.items = normalizedItems.map((item) => ({
+      ...item,
+      chargedQuantity: item.quantity,
+      lineTotal: item.price * item.quantity,
+      bogoFreeQuantity: 0,
+    }));
+    summary.subtotal = summary.originalSubtotal;
+    return summary;
+  }
+
+  const units = [];
+  normalizedItems.forEach((item) => {
+    for (let unitIndex = 0; unitIndex < item.quantity; unitIndex += 1) {
+      units.push({ index: item.index, price: item.price });
+    }
+  });
+
+  units.sort((left, right) => right.price - left.price || left.index - right.index);
+
+  const chargedCounts = new Array(normalizedItems.length).fill(0);
+  const freeCounts = new Array(normalizedItems.length).fill(0);
+
+  units.forEach((unit, unitIndex) => {
+    if (unitIndex % 2 === 0) {
+      chargedCounts[unit.index] += 1;
+    } else {
+      freeCounts[unit.index] += 1;
+    }
+  });
+
+  summary.items = normalizedItems.map((item, index) => {
+    const chargedQuantity = chargedCounts[index];
+    const freeQuantity = freeCounts[index];
+    const lineTotal = item.price * chargedQuantity;
+
+    summary.subtotal += lineTotal;
+    summary.savings += Math.max(0, item.price * item.quantity - lineTotal);
+
+    return {
+      ...item,
+      chargedQuantity,
+      lineTotal,
+      bogoFreeQuantity: freeQuantity,
+    };
+  });
+
+  return summary;
+};
+
 const formatOrderItemsText = (items = []) => {
   if (!Array.isArray(items) || items.length === 0) return 'No items';
   return items
     .map((item) => {
       const price = Number(item.price || 0);
       const quantity = Number(item.quantity || 0);
+      const chargedQuantity = Number(item.chargedQuantity || quantity || 0);
       const imageUrl = getEmailSafeImageUrl(item.image);
       const imageText = imageUrl ? ` | Image: ${imageUrl}` : '';
-      return `${item.name} | Size: ${item.size || 'M'} | Qty: ${quantity} | Unit Price: Rs ${price.toFixed(2)} | Line Total: Rs ${(price * quantity).toFixed(2)}${imageText}`;
+      const freeQuantity = Math.max(0, quantity - chargedQuantity);
+      const freeText = freeQuantity > 0 ? ` | Free Qty: ${freeQuantity}` : '';
+      return `${item.name} | Size: ${item.size || 'M'} | Qty: ${quantity} | Charged Qty: ${chargedQuantity}${freeText} | Unit Price: Rs ${price.toFixed(2)} | Line Total: Rs ${(price * chargedQuantity).toFixed(2)}${imageText}`;
     })
     .join('\n');
 };
 
 const formatOrderItemsHtml = (items = []) => {
-  if (!Array.isArray(items) || items.length === 0) return '<tr><td colspan="5">No items</td></tr>';
+  if (!Array.isArray(items) || items.length === 0) return '<tr><td colspan="6">No items</td></tr>';
   return items
     .map((item) => {
       const price = Number(item.price || 0);
       const quantity = Number(item.quantity || 0);
+      const chargedQuantity = Number(item.chargedQuantity || quantity || 0);
       return `
         <tr>
           <td style="padding: 8px; border: 1px solid #ddd;">${escapeHtml(item.name || 'Unnamed item')}</td>
           <td style="padding: 8px; border: 1px solid #ddd;">${escapeHtml(item.size || 'M')}</td>
           <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${quantity}</td>
+          <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${chargedQuantity}</td>
           <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rs ${price.toFixed(2)}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rs ${(price * quantity).toFixed(2)}</td>
+          <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">Rs ${(price * chargedQuantity).toFixed(2)}</td>
         </tr>
       `;
     })
@@ -1096,17 +1273,16 @@ const buildPaymentDetails = async ({ paymentInput, fallbackAmount, fallbackCurre
 app.post('/api/orders', async (req, res) => {
   try {
 
-    const SHIPPING_FEE = 0;
     const { customer, items, shippingAddress, phone, email, payment } = req.body;
     const normalizedPhone = normalizePhone(phone);
-    // Calculate subtotal from items
-    const subtotal = Array.isArray(items)
-      ? items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0)
-      : 0;
-    const total = subtotal + SHIPPING_FEE;
+    const isBogoActive = await getBogoOfferStatus();
+    const pricing = calculateOrderPricing(items, isBogoActive);
+    const shippingFee = calculateShippingFee(pricing.items);
+    const subtotal = pricing.subtotal;
+    const total = subtotal + shippingFee;
 
     if (ENABLE_VERBOSE_ORDER_LOGS) {
-      console.log('[ORDER] Incoming order:', { customer, items, subtotal, shipping: SHIPPING_FEE, total, shippingAddress, phone, email, payment });
+      console.log('[ORDER] Incoming order:', { customer, items, subtotal, shipping: shippingFee, total, shippingAddress, phone, email, payment, isBogoActive });
     }
 
     if (!customer || !items || !phone) {
@@ -1145,9 +1321,9 @@ app.post('/api/orders', async (req, res) => {
       phone: String(phone || '').trim(),
       phoneNormalized: normalizedPhone,
       email: String(email || paymentDetails.email || '').trim().toLowerCase(),
-      items,
+      items: pricing.items,
       subtotal,
-      shipping: SHIPPING_FEE,
+      shipping: shippingFee,
       total,
       shippingAddress,
       payment: paymentDetails,
@@ -1384,6 +1560,52 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
   }
 });
 
+// ── BOGO OFFER ROUTES ────────────────────────────────────────────────
+
+// Public: get current active offer
+app.get('/api/bogo-offer', async (_req, res) => {
+  try {
+    const offer = await getBogoOffer();
+    const isActive = Boolean(offer.is_active);
+    const isExpired = offer.end_time ? new Date(offer.end_time) < new Date() : false;
+    return res.json({
+      is_active: isActive && !isExpired,
+      title: offer.title,
+      subtitle: offer.subtitle,
+      end_time: offer.end_time,
+    });
+  } catch (err) {
+    console.error('GET /api/bogo-offer error:', err.message);
+    return res.status(500).json({ message: 'Failed to load offer' });
+  }
+});
+
+// Admin: get full offer settings
+app.get('/api/admin/bogo-offer', adminAuth, async (_req, res) => {
+  try {
+    const offer = await getBogoOffer();
+    return res.json(offer);
+  } catch (err) {
+    console.error('GET /api/admin/bogo-offer error:', err.message);
+    return res.status(500).json({ message: 'Failed to load offer' });
+  }
+});
+
+// Admin: update offer settings
+app.put('/api/admin/bogo-offer', adminAuth, async (req, res) => {
+  try {
+    const { is_active, title, subtitle, end_time } = req.body;
+    if (!String(title || '').trim()) {
+      return res.status(400).json({ message: 'Title is required' });
+    }
+    const updated = await updateBogoOffer({ is_active, title, subtitle, end_time });
+    return res.json(updated);
+  } catch (err) {
+    console.error('PUT /api/admin/bogo-offer error:', err.message);
+    return res.status(500).json({ message: 'Failed to update offer' });
+  }
+});
+
 
 
 
@@ -1548,8 +1770,9 @@ const sendOrderConfirmationEmail = async (order) => {
       <td>${item.name}</td>
       <td>${item.size || ''}</td>
       <td style="text-align:center">${item.quantity}</td>
+      <td style="text-align:center">${item.chargedQuantity ?? item.quantity}</td>
       <td style="text-align:right">₹${item.price}</td>
-      <td style="text-align:right">₹${(item.price * item.quantity).toFixed(2)}</td>
+      <td style="text-align:right">₹${(item.lineTotal ?? (item.price * (item.chargedQuantity ?? item.quantity))).toFixed(2)}</td>
     </tr>
   `).join('');
   const html = `
@@ -1560,7 +1783,7 @@ const sendOrderConfirmationEmail = async (order) => {
       <table style="width:100%;border-collapse:collapse;">
         <thead>
           <tr style="background:#f5f5f5;">
-            <th align="left">Product</th><th align="left">Size</th><th>Qty</th><th align="right">Unit Price</th><th align="right">Total</th>
+            <th align="left">Product</th><th align="left">Size</th><th>Qty</th><th>Charged</th><th align="right">Unit Price</th><th align="right">Total</th>
           </tr>
         </thead>
         <tbody>${itemsHtml}</tbody>
@@ -1611,6 +1834,7 @@ const startServer = async () => {
     await ensureProductStore();
     await ensureOrdersStore();
     await ensureWishlistStore();
+    await ensureBogoStore();
     if (databaseReady) {
       console.log(`Database mode: MySQL SSL connected (${process.env.DB_NAME})`);
       console.log('Persistence mode: Products, orders, and wishlist use MySQL');
